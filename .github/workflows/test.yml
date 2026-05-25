@@ -1,0 +1,37 @@
+name: Backend tests
+
+on:
+    push:
+        branches: [master]
+        paths:
+            - "backend/**"
+    pull_request:
+        branches: [master]
+        paths:
+            - "backend/**"
+
+jobs:
+    test:
+        name: pytest (Python ${{ matrix.python-version }})
+        runs-on: ubuntu-latest
+
+        strategy:
+            matrix:
+                python-version: ["3.11", "3.12"]
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Python ${{ matrix.python-version }}
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ matrix.python-version }}
+                  cache: pip
+
+            - name: Install dependencies
+              working-directory: ./backend
+              run: pip install -r requirements.txt pytest pytest-asyncio httpx
+
+            - name: Run tests
+              working-directory: ./backend
+              run: pytest tests/ -v
