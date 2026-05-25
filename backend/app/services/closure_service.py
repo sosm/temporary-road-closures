@@ -3,23 +3,22 @@ Enhanced business logic for closure management with full OpenLR integration.
 """
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_
-from geoalchemy2.functions import ST_AsGeoJSON, ST_GeomFromGeoJSON, ST_Intersects
+from sqlalchemy import func, or_
+from geoalchemy2.functions import ST_AsGeoJSON, ST_Intersects
 from typing import List, Optional, Dict, Any, Tuple
 import json
 from datetime import datetime, timezone
 import logging
 
-from app.models.closure import Closure, ClosureType, ClosureStatus
+from app.models.closure import Closure, ClosureStatus
 from app.models.user import User
 from app.schemas.closure import ClosureCreate, ClosureUpdate, ClosureQueryParams
 from app.core.exceptions import (
     NotFoundException,
     ValidationException,
     GeospatialException,
-    OpenLRException,
 )
-from app.services.openlr_service import OpenLRService, create_openlr_service
+from app.services.openlr_service import create_openlr_service
 from app.services.spatial_service import SpatialService
 from app.services.routing_filters import does_closure_affect_mode
 from app.schemas.routing import RoutingMode
@@ -146,7 +145,6 @@ class ClosureService:
         try:
             # Update fields
             update_data = closure_data.dict(exclude_unset=True)
-            geometry_updated = False
 
             # Handle geometry update
             if "geometry" in update_data and update_data["geometry"]:
@@ -158,7 +156,6 @@ class ClosureService:
 
                 geometry_wkt = self.spatial_service.geojson_to_wkt(geometry_geojson)
                 closure.geometry = func.ST_GeomFromText(geometry_wkt, 4326)
-                geometry_updated = True
 
                 # Regenerate OpenLR code for new geometry
                 openlr_result = self._encode_geometry_to_openlr(geometry_geojson)

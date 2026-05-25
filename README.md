@@ -11,6 +11,8 @@ A comprehensive system for collecting and disseminating temporary road closure i
 [![PostGIS](https://img.shields.io/badge/PostGIS-3.5+-blue.svg)](https://postgis.net/)
 [![OpenLR](https://img.shields.io/badge/OpenLR-integrated-orange.svg)](https://www.openlr.org/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Backend tests](https://github.com/Archit1706/temporary-road-closures/actions/workflows/test.yml/badge.svg)](https://github.com/Archit1706/temporary-road-closures/actions/workflows/test.yml)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 ---
 
