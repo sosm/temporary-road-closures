@@ -55,6 +55,8 @@ services:
                 condition: service_healthy
             redis:
                 condition: service_healthy
+            valhalla:
+                condition: service_healthy
         command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
         healthcheck:
             test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -75,7 +77,7 @@ services:
 
     # Valhalla routing engine
     valhalla:
-        image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+        image: ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1
         container_name: osm_closures_valhalla
         ports:
             - "8002:8002"
@@ -85,6 +87,12 @@ services:
             - serve_tiles=True
             - build_admins=True
             - build_time_zones=True
+        healthcheck:
+              test: ["CMD", "curl", "-f", "http://localhost:8002/status"]
+              interval: 30s
+              timeout: 10s
+              retries: 10
+              start_period: 300s
 
 volumes:
     postgres_data:
