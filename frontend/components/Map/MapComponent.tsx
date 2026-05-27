@@ -274,7 +274,8 @@ const MapEventHandler: React.FC<{
 
                     const routeCoordinates = await valhallaAPI.getRouteCoordinates(
                         routePoints.map(p => ({ lat: p.lat, lon: p.lng, type: 'break' as const })),
-                        'auto'
+                        'auto',
+                        true // ignore access restrictions: we're annotating a closure, not navigating
                     );
 
                     const routeStats = {

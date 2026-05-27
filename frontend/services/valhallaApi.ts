@@ -29,6 +29,16 @@ export interface ValhallaRequest {
             toll_booth_penalty?: number;
             country_crossing_cost?: number;
             country_crossing_penalty?: number;
+            ignore_access?: boolean;
+            ignore_restrictions?: boolean;
+        };
+        bicycle?: {
+            ignore_access?: boolean;
+            ignore_restrictions?: boolean;
+        };
+        pedestrian?: {
+            ignore_access?: boolean;
+            ignore_restrictions?: boolean;
         };
     };
     directions_options?: {
@@ -204,7 +214,8 @@ export class ValhallaAPI {
 
     async getRouteCoordinates(
         locations: ValhallaLocation[],
-        costing: 'auto' | 'bicycle' | 'pedestrian' = 'auto'
+        costing: 'auto' | 'bicycle' | 'pedestrian' = 'auto',
+        ignoreAccess: boolean = false
     ): Promise<[number, number][]> {
         if (locations.length < 2) {
             throw new Error('At least 2 locations are required for routing');
@@ -217,6 +228,9 @@ export class ValhallaAPI {
                 type: 'break'
             })),
             costing,
+            ...(ignoreAccess && {
+                costing_options: { [costing]: { ignore_access: true } }
+            }),
             directions_options: {
                 units: 'kilometers',
                 format: 'json'
