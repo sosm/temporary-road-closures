@@ -344,3 +344,4 @@ dist
 
 # MacOS specific files
 .DS_Store
+backend/valhalla_data/

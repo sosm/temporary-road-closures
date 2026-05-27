@@ -45,6 +45,7 @@ services:
             REDIS_URL: redis://redis:6379/0
             DEBUG: "true"
             ENVIRONMENT: development
+            VALHALLA_URL: http://valhalla:8002
         ports:
             - "8000:8000"
         volumes:
@@ -71,6 +72,19 @@ services:
             - db
         environment:
             ADMINER_DEFAULT_SERVER: db
+
+    # Valhalla routing engine
+    valhalla:
+        image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+        container_name: osm_closures_valhalla
+        ports:
+            - "8002:8002"
+        volumes:
+            - ./valhalla_data:/custom_files
+        environment:
+            - serve_tiles=True
+            - build_admins=True
+            - build_time_zones=True
 
 volumes:
     postgres_data:
