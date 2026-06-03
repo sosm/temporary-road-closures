@@ -2,7 +2,7 @@
 numpy<2.0
 
 # Core FastAPI and server
-fastapi==0.104.1
+fastapi==0.115.12
 uvicorn[standard]==0.24.0
 gunicorn==23.0.0
 

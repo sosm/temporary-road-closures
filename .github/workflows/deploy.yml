@@ -31,7 +31,7 @@ jobs:
             - name: Security scan (pip-audit)
               run: |
                   pip install pip-audit
-                  pip-audit -r backend/requirements.txt --fail-on CRITICAL --fail-on HIGH
+                  pip-audit -r backend/requirements.txt
 
             - name: Install frontend dependencies
               working-directory: ./frontend
