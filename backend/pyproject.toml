@@ -9,7 +9,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.11"
 fastapi = "^0.115"
-gunicorn = "^21.2.0"
+gunicorn = "^23.0.0"
 uvicorn = {extras = ["standard"], version = "^0.24.0"}
 sqlalchemy = "^2.0.23"
 # alembic = "^1.12.1"
@@ -18,15 +18,14 @@ geoalchemy2 = "^0.14.2"
 psutil = "^5.9.6"
 pydantic = {extras = ["email"], version = "^2.5.0"}
 pydantic-settings = "^2.1.0"
-python-jose = {extras = ["cryptography"], version = "^3.3.0"}
 PyJWT = "^2.8.0"
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 bcrypt = "3.2.0"
-python-multipart = "^0.0.6"
+python-multipart = "^0.0.20"
 redis = "^5.0.1"
 shapely = "^2.0.2"
 geojson = "^3.1.0"
-requests = "^2.31.0"
+requests = "^2.32.3"
 httpx = "^0.25.2"
 email-validator = "^2.1.0"
 xmltodict = "^0.13.0"

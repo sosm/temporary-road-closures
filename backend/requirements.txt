@@ -4,7 +4,7 @@ numpy<2.0
 # Core FastAPI and server
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-gunicorn==21.2.0
+gunicorn==23.0.0
 
 # Database and ORM
 sqlalchemy==2.0.23
@@ -17,10 +17,9 @@ pydantic[email]==2.5.0
 pydantic-settings==2.1.0
 
 # Authentication and security
-python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-python-multipart==0.0.6
+python-multipart==0.0.20
 PyJWT==2.8.0
 
 # Caching and async
@@ -36,7 +35,7 @@ xmltodict==0.13.0
 pyproj==3.6.1
 
 # General utilities
-requests==2.31.0
+requests==2.32.3
 psutil==5.9.6
 
 # Testing (development)

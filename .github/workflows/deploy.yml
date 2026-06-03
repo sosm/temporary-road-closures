@@ -28,6 +28,12 @@ jobs:
               run: |
                   pip install -r requirements.txt
 
+            - name: Security scan (pip-audit)
+              working-directory: ./backend
+              run: |
+                  pip install pip-audit
+                  pip-audit -r requirements.txt --fail-on CRITICAL --fail-on HIGH
+
             - name: Install frontend dependencies
               working-directory: ./frontend
               run: |
