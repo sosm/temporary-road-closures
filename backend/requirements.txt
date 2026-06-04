@@ -2,7 +2,7 @@
 numpy<2.0
 
 # Core FastAPI and server
-fastapi==0.115.12
+fastapi==0.133.1
 uvicorn[standard]==0.24.0
 gunicorn==23.0.0
 
@@ -12,15 +12,15 @@ psycopg2-binary==2.9.9
 geoalchemy2==0.14.2
 
 # Data validation and settings (with email support)
-email-validator==2.1.0
-pydantic[email]==2.5.0
-pydantic-settings==2.1.0
+email-validator==2.3.0
+pydantic[email]==2.13.4
+pydantic-settings==2.14.1
 
 # Authentication and security
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-python-multipart==0.0.20
-PyJWT==2.8.0
+python-multipart==0.0.27
+PyJWT==2.13.0
 
 # Caching and async
 redis==5.0.1
@@ -35,14 +35,14 @@ xmltodict==0.13.0
 pyproj==3.6.1
 
 # General utilities
-requests==2.32.3
+requests==2.33.0
 psutil==5.9.6
 
 # Testing (development)
-pytest==7.4.3
-pytest-asyncio==0.21.1
+pytest==9.0.3
+pytest-asyncio==1.4.0
 
 # Code formatting and linting (development)
-black==23.11.0
+black==26.3.1
 isort==5.12.0
 flake8==6.1.0
