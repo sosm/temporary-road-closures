@@ -513,13 +513,13 @@ Ready to explore the Temporary Road Closures system?
 
 1. **[Setup the Backend](./backend/README.md)** - Complete development environment
 2. **[Setup the Frontend](./frontend/README.md)** - Web application development
-3. **[Explore the API](http://closures.osm.ch/api/v1/docs)** - Interactive documentation
+3. **[Explore the API](https://closures.osm.ch/api/v1/docs)** - Interactive documentation
 4. **[Join the Community](https://github.com/sosm/temporary-road-closures/discussions)** - Connect with other contributors
 
 ### 🗺️ For OSM Community
 
-1. **[Try the Web App](http://closures.osm.ch)** - Experience the complete interface
-2. **[Test Closure-Aware Routing](http://closures.osm.ch/closure-aware-routing)** - Advanced routing features
+1. **[Try the Web App](https://closures.osm.ch)** - Experience the complete interface
+2. **[Test Closure-Aware Routing](https://closures.osm.ch/closure-aware-routing)** - Advanced routing features
 3. **[Provide Feedback](https://github.com/sosm/temporary-road-closures/issues)** - Help shape the future
 
 ### 🏢 For Organizations
@@ -531,10 +531,10 @@ Ready to explore the Temporary Road Closures system?
 
 ### 🚴‍♀️ For End Users
 
-1. **[Visit the Application](http://closures.osm.ch)** - Start reporting closures
-2. **[Try Demo Mode](http://closures.osm.ch)** - No login required for testing
-3. **[Learn Closure-Aware Routing](http://closures.osm.ch/closure-aware-routing)** - Better route planning
-4. **[Read User Guide](http://closures.osm.ch/docs)** - Comprehensive documentation
+1. **[Visit the Application](https://closures.osm.ch)** - Start reporting closures
+2. **[Try Demo Mode](https://closures.osm.ch)** - No login required for testing
+3. **[Learn Closure-Aware Routing](https://closures.osm.ch/closure-aware-routing)** - Better route planning
+4. **[Read User Guide](https://closures.osm.ch/docs)** - Comprehensive documentation
 
 ## 🏆 Project Success
 
