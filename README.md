@@ -1,6 +1,6 @@
 # Temporary Road Closures Database and API
 
-**Google Summer of Code 2025 Project for OpenStreetMap Foundation**
+**Google Summer of Code Project for OpenStreetMap Foundation in [2025](https://wiki.openstreetmap.org/wiki/Google_Summer_of_Code/2025/Accepted_projects) and [2026](https://wiki.openstreetmap.org/wiki/Google_Summer_of_Code/2026/Accepted_projects)**
 
 A comprehensive system for collecting and disseminating temporary road closure information, designed to enhance OSM-based navigation applications with real-time closure data and intelligent routing capabilities.
 
@@ -386,8 +386,10 @@ The application includes automated SSL certificate management using Let's Encryp
 
 ### 🌐 Project Resources
 
--   **[GSoC Project Page](https://summerofcode.withgoogle.com/programs/2025/projects/tF4ccCqZ)** - Official Google Summer of Code listing
--   **[OSM Diary Updates](https://www.openstreetmap.org/user/Archit%20Rathod/diary/406815)** - Development blog and progress updates
+-   **[GSoC Project Page 2025](https://summerofcode.withgoogle.com/programs/2025/projects/tF4ccCqZ)** - Official Google Summer of Code listing for 2025
+-   **[OSM Diary Updates 2025](https://www.openstreetmap.org/user/Archit%20Rathod/diary/406815)** - Development blog and progress updates for 2025
+-   **[GSoC Project Page 2026](https://summerofcode.withgoogle.com/organizations/openstreetmap/projects/details/6WS8O5PX)** - Official Google Summer of Code listing for 2026
+-   **[OSM Diary Updates 2026](https://www.openstreetmap.org/user/Venetis%20Charalampidis/diary/408696)** - Development blog and progress updates for 2026
 -   **[GitHub Repository](https://github.com/sosm/temporary-road-closures)** - Complete source code
 -   **[OpenLR Specification](https://www.openlr.org/)** - Location referencing standard
 
@@ -449,6 +451,15 @@ This project welcomes contributions from the OpenStreetMap community and develop
 
 -   **🧭 Primary Mentor**: **Simon Poole** ([OpenStreetMap Foundation](https://osmfoundation.org/))
 -   **🗺️ Secondary Mentor**: **Ian Wagner** ([Stadia Maps](https://stadiamaps.com/))
+
+### 🎓 Google Summer of Code 2026
+
+-   **🧑‍💻 Student Developer**: **Venetis Charalampidis**
+
+    -   GitHub: [@YatesMold](https://github.com/YatesMold)
+
+-   **🧭 Primary Mentor**: **Simon Poole** ([OpenStreetMap Foundation](https://osmfoundation.org/))
+-   **🗺️ Backup Mentor**: **David Haberthür** ([@habi](https://github.com/habi))
 
 ### 🏛️ Host Organization
 
@@ -564,7 +575,7 @@ This Google Summer of Code 2025 project has successfully delivered:
 
 **🌟 Star this repository** if you find it useful for the OpenStreetMap ecosystem!
 
-**📢 Follow development progress** in the [OSM diary](https://www.openstreetmap.org/user/Archit%20Rathod/diary/406815) and [GitHub discussions](https://github.com/Archit1706/temporary-road-closures/discussions).
+**📢 Follow development progress** in the [OSM diary entries for 2025](https://www.openstreetmap.org/user/Archit%20Rathod/diary), [2026](https://www.openstreetmap.org/user/Venetis%20Charalampidis/diary) and contribute in the [GitHub discussions](https://github.com/sosm/temporary-road-closures/discussions) here.
 
 **🚀 Try the live demo** by following the [Quick Start guide](#-quick-start) above.
 
