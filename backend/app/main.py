@@ -459,7 +459,7 @@ This API uses **OAuth2 Password Bearer** authentication with JWT tokens.
 
 - **Health Check**: [/health](/health)
 - **Database Admin**: http://localhost:8080
-- **GitHub**: https://github.com/Archit1706/temporary-road-closures
+- **GitHub**: https://github.com/sosm/temporary-road-closures
 
 ---
 
@@ -475,7 +475,7 @@ This API uses **OAuth2 Password Bearer** authentication with JWT tokens.
     # Enhanced contact and license info
     openapi_schema["info"]["contact"] = {
         "name": "OSM Road Closures API Support",
-        "url": "https://github.com/Archit1706/temporary-road-closures",
+        "url": "https://github.com/sosm/temporary-road-closures",
         "email": "architrathod77@gmail.com",
     }
 

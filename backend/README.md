@@ -76,7 +76,7 @@ The API uses **OAuth2 Password Bearer** authentication:
 
 ```bash
 # Clone the repository
-git clone https://github.com/Archit1706/temporary-road-closures
+git clone https://github.com/sosm/temporary-road-closures
 cd temporary-road-closures/backend
 
 # Copy environment configuration
@@ -645,13 +645,13 @@ This project is licensed under the **GNU Affero General Public License v3.0** (A
 
 ### Getting Help
 
--   **Issues**: [GitHub Issues](https://github.com/Archit1706/temporary-road-closures/issues)
--   **Discussions**: [GitHub Discussions](https://github.com/Archit1706/temporary-road-closures/discussions)
+-   **Issues**: [GitHub Issues](https://github.com/sosm/temporary-road-closures/issues)
+-   **Discussions**: [GitHub Discussions](https://github.com/sosm/temporary-road-closures/discussions)
 -   **Documentation**: [API Docs](http://closures.osm.ch/api/v1/docs)
 
 ### Project Information
 
--   **Repository**: [temporary-road-closures](https://github.com/Archit1706/temporary-road-closures)
+-   **Repository**: [temporary-road-closures](https://github.com/sosm/temporary-road-closures)
 -   **GSoC Project**: [Google Summer of Code 2025](https://summerofcode.withgoogle.com/programs/2025/projects/tF4ccCqZ)
 -   **Developer**: **Archit Rathod** (architrathod77@gmail.com)
 -   **Mentor**: **Simon Poole** (OpenStreetMap Foundation)
