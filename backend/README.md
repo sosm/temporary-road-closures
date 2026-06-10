@@ -647,7 +647,7 @@ This project is licensed under the **GNU Affero General Public License v3.0** (A
 
 -   **Issues**: [GitHub Issues](https://github.com/Archit1706/temporary-road-closures/issues)
 -   **Discussions**: [GitHub Discussions](https://github.com/Archit1706/temporary-road-closures/discussions)
--   **Documentation**: [API Docs](http://localhost:8000/api/v1/docs)
+-   **Documentation**: [API Docs](http://closures.osm.ch/api/v1/docs)
 
 ### Project Information
 
