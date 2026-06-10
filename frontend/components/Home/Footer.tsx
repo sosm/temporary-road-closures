@@ -124,7 +124,7 @@ const Footer: React.FC = () => {
                                 Open source under MIT License.
                             </p>
                             <p className="mt-1">
-                                Built with ❤️ for the OpenStreetMap community supported by the [Swiss OpenStreetMap Association](https://sosm.ch/).
+                                Built with ❤️ for the OpenStreetMap community, supported by the [Swiss OpenStreetMap Association](https://sosm.ch/).
                             </p>
                         </div>
                     </div>
