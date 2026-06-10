@@ -766,14 +766,14 @@ This project is licensed under the **GNU Affero General Public License v3.0** (A
 
 ### Getting Help
 
--   **Issues**: [GitHub Issues](https://github.com/Archit1706/temporary-road-closures/issues)
--   **Discussions**: [GitHub Discussions](https://github.com/Archit1706/temporary-road-closures/discussions)
+-   **Issues**: [GitHub Issues](https://github.com/sosm/temporary-road-closures/issues)
+-   **Discussions**: [GitHub Discussions](https://github.com/sosm/temporary-road-closures/discussions)
 -   **Documentation**: [Live Docs](http://localhost:3000/docs)
 -   **Backend API**: [API Documentation](http://localhost:8000/docs)
 
 ### Project Information
 
--   **Repository**: [temporary-road-closures](https://github.com/Archit1706/temporary-road-closures)
+-   **Repository**: [temporary-road-closures](https://github.com/sosm/temporary-road-closures)
 -   **GSoC Project**: [Google Summer of Code 2025](https://summerofcode.withgoogle.com/programs/2025/projects/tF4ccCqZ)
 -   **Developer**: **Archit Rathod** (architrathod77@gmail.com)
 -   **Mentor**: **Simon Poole** (OpenStreetMap Foundation)

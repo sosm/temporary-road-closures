@@ -18,7 +18,7 @@ const Deployment: React.FC = () => {
                 </p>
                 <CodeBlock
                     code={`# Clone the repository
-git clone https://github.com/Archit1706/temporary-road-closures
+git clone https://github.com/sosm/temporary-road-closures
 cd temporary-road-closures/backend
 
 # Start all services

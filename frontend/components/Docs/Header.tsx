@@ -23,7 +23,7 @@ const DocsHeader = ({ onToggleSidebar, isSidebarOpen }: { onToggleSidebar: () =>
                         Live Demo
                     </Link>
                     <a
-                        href="https://github.com/Archit1706/temporary-road-closures"
+                        href="https://github.com/sosm/temporary-road-closures"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-black text-white rounded-full text-xs font-bold transition-colors"

@@ -76,7 +76,7 @@ const Hero: React.FC = () => {
                                 <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
                             </Link>
                             <a
-                                href="https://github.com/Archit1706/temporary-road-closures"
+                                href="https://github.com/sosm/temporary-road-closures"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center px-6 py-3 border border-gray-300 text-gray-700 rounded-full hover:bg-gray-50 font-medium transition-colors"

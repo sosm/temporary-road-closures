@@ -133,7 +133,7 @@ const Acknowledgements: React.FC = () => {
                     </p>
                     <div className="flex justify-center space-x-6">
                         <a
-                            href="https://github.com/Archit1706/temporary-road-closures/stargazers"
+                            href="https://github.com/sosm/temporary-road-closures/stargazers"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:text-blue-700 text-sm"
@@ -141,7 +141,7 @@ const Acknowledgements: React.FC = () => {
                             ⭐ Star the project on GitHub
                         </a>
                         <a
-                            href="https://github.com/Archit1706/temporary-road-closures/issues"
+                            href="https://github.com/sosm/temporary-road-closures/issues"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:text-blue-700 text-sm"

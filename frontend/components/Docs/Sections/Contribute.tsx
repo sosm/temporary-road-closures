@@ -26,7 +26,7 @@ const Contribute: React.FC = () => {
                         <h2 className="text-2xl font-bold text-gray-900 mb-4">Development Setup</h2>
                         <CodeBlock
                             code={`# Clone the repository
-git clone https://github.com/Archit1706/temporary-road-closures
+git clone https://github.com/sosm/temporary-road-closures
 cd temporary-road-closures
 
 # Backend setup
@@ -122,7 +122,7 @@ pytest tests/test_closures.py -v`}
                 <h2 className="text-2xl font-bold text-gray-900 mb-4">Project Links</h2>
                 <div className="grid md:grid-cols-3 gap-4">
                     <a
-                        href="https://github.com/Archit1706/temporary-road-closures"
+                        href="https://github.com/sosm/temporary-road-closures"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center space-x-3 p-4 bg-white rounded-lg border border-gray-200 hover:border-blue-300 transition-colors"

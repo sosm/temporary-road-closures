@@ -97,7 +97,7 @@ const Setup: React.FC = () => {
                             </h3>
                             <CodeBlock
                                 code={`# Clone the project repository
-git clone https://github.com/Archit1706/temporary-road-closures.git
+git clone https://github.com/sosm/temporary-road-closures.git
 
 # Navigate to the frontend directory
 cd temporary-road-closures/frontend`}
