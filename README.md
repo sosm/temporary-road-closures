@@ -107,7 +107,7 @@ temporary-road-closures/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/Archit1706/temporary-road-closures
+git clone https://github.com/sosm/temporary-road-closures
 cd temporary-road-closures
 ```
 
@@ -226,7 +226,7 @@ The application includes automated SSL certificate management using Let's Encryp
 1. **Clone and Configure**:
 
    ```bash
-   git clone https://github.com/Archit1706/temporary-road-closures
+   git clone https://github.com/sosm/temporary-road-closures
    cd temporary-road-closures
    cp .env.prod.example .env.prod
    # Edit .env.prod with your production settings
@@ -388,7 +388,7 @@ The application includes automated SSL certificate management using Let's Encryp
 
 -   **[GSoC Project Page](https://summerofcode.withgoogle.com/programs/2025/projects/tF4ccCqZ)** - Official Google Summer of Code listing
 -   **[OSM Diary Updates](https://www.openstreetmap.org/user/Archit%20Rathod/diary/406815)** - Development blog and progress updates
--   **[GitHub Repository](https://github.com/Archit1706/temporary-road-closures)** - Complete source code
+-   **[GitHub Repository](https://github.com/sosm/temporary-road-closures)** - Complete source code
 -   **[OpenLR Specification](https://www.openlr.org/)** - Location referencing standard
 
 ### 🛠️ Technical Resources
@@ -415,8 +415,8 @@ This project welcomes contributions from the OpenStreetMap community and develop
 
 ### 🐛 Reporting Issues
 
--   **Bug Reports**: [GitHub Issues](https://github.com/Archit1706/temporary-road-closures/issues)
--   **Feature Requests**: [GitHub Discussions](https://github.com/Archit1706/temporary-road-closures/discussions)
+-   **Bug Reports**: [GitHub Issues](https://github.com/sosm/temporary-road-closures/issues)
+-   **Feature Requests**: [GitHub Discussions](https://github.com/sosm/temporary-road-closures/discussions)
 -   **Documentation**: Improvements and clarifications always welcome!
 -   **Security Issues**: Email directly to architrathod77@gmail.com
 
@@ -424,7 +424,7 @@ This project welcomes contributions from the OpenStreetMap community and develop
 
 -   **OSM Forum**: [community.openstreetmap.org](https://community.openstreetmap.org/)
 -   **OSM Mailing Lists**: [lists.openstreetmap.org](https://lists.openstreetmap.org/)
--   **GitHub Discussions**: [Project Discussions](https://github.com/Archit1706/temporary-road-closures/discussions)
+-   **GitHub Discussions**: [Project Discussions](https://github.com/sosm/temporary-road-closures/discussions)
 -   **Developer Contact**: architrathod77@gmail.com
 
 ### 🎯 Contribution Areas
@@ -503,14 +503,14 @@ Ready to explore the Temporary Road Closures system?
 1. **[Setup the Backend](./backend/README.md)** - Complete development environment
 2. **[Setup the Frontend](./frontend/README.md)** - Web application development
 3. **[Explore the API](http://localhost:8000/api/v1/docs)** - Interactive documentation
-4. **[Join the Community](https://github.com/Archit1706/temporary-road-closures/discussions)** - Connect with other contributors
+4. **[Join the Community](https://github.com/sosm/temporary-road-closures/discussions)** - Connect with other contributors
 
 ### 🗺️ For OSM Community
 
 1. **[Learn About the Project](https://www.openstreetmap.org/user/Archit%20Rathod/diary/406815)** - OSM diary updates
 2. **[Try the Web App](http://localhost:3000)** - Experience the complete interface
 3. **[Test Closure-Aware Routing](http://localhost:3000/closure-aware-routing)** - Advanced routing features
-4. **[Provide Feedback](https://github.com/Archit1706/temporary-road-closures/issues)** - Help shape the future
+4. **[Provide Feedback](https://github.com/sosm/temporary-road-closures/issues)** - Help shape the future
 
 ### 🏢 For Organizations
 
