@@ -77,6 +77,26 @@ services:
             retries: 3
             start_period: 30s
 
+    # Valhalla routing engine
+    valhalla:
+        image: ghcr.io/gis-ops/docker-valhalla/valhalla:3.5.1
+        container_name: osm_closures_valhalla_prod
+        volumes:
+            - ./valhalla_data:/custom_files
+        environment:
+            - serve_tiles=True
+            - build_admins=True
+            - build_time_zones=True
+        networks:
+            - osm_network
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8002/status"]
+            interval: 30s
+            timeout: 10s
+            retries: 10
+            start_period: 300s
+
     # FastAPI backend application
     api:
         build:
@@ -95,12 +115,15 @@ services:
             OPENLR_FORMAT: ${OPENLR_FORMAT}
             OPENLR_ACCURACY_TOLERANCE: ${OPENLR_ACCURACY_TOLERANCE}
             LOG_LEVEL: ${LOG_LEVEL}
+            VALHALLA_URL: http://valhalla:8002
         ports:
             - "8000:8000"
         depends_on:
             db:
                 condition: service_healthy
             redis:
+                condition: service_healthy
+            valhalla:
                 condition: service_healthy
         networks:
             - osm_network
@@ -138,7 +161,7 @@ services:
         environment:
             NODE_ENV: production
             NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-            NEXT_PUBLIC_VALHALLA_URL: https://valhalla1.openstreetmap.de/route
+            NEXT_PUBLIC_VALHALLA_URL: http://valhalla:8002/route
             NEXT_PUBLIC_USE_MOCK_API: "false"
             NEXT_PUBLIC_DEBUG_ROUTING: "false"
         networks:
