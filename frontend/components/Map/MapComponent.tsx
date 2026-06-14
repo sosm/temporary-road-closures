@@ -651,6 +651,13 @@ function createClosurePopup(closure: Closure): string {
                         <strong>OpenLR:</strong> ${closure.openlr_code}
                     </div>
                 ` : ''}
+                <div class="mt-3 pt-2" style="border-top:1px solid #e5e7eb">
+                    <button
+                        onclick="var btn=this; navigator.clipboard.writeText(window.location.origin+'/closures?highlight=${closure.id}').then(function(){btn.textContent='✓ Copied!';setTimeout(function(){btn.textContent='🔗 Copy link';},2000)}).catch(function(){});"
+                        style="font-size:0.75rem;padding:2px 8px;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;background:#f9fafb;">
+                        🔗 Copy link
+                    </button>
+                </div>
             </div>
         </div>
     `;
