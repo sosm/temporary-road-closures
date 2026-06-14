@@ -3,8 +3,10 @@
 
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import { useSearchParams } from 'next/navigation';
 import { Toaster } from '@/components/ui/sonner';
 import { ClosuresProvider, useClosures } from '@/context/ClosuresContext';
+import { closuresApi } from '@/services/api';
 import ClientOnly from '@/components/ClientOnly';
 import { LogIn, Info, MapPin, Route as RouteIcon, Edit3, TriangleAlert, Target, X, Check } from 'lucide-react';
 import L from 'leaflet';
@@ -214,9 +216,22 @@ function ClosuresPageContent() {
   const [isFormMinimized, setIsFormMinimized] = useState(false);
   const [isEditFormMinimized, setIsEditFormMinimized] = useState(false);
 
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlight');
+
   // Move useClosures hook here, before any conditional returns
-  const { state, stopEditingClosure } = useClosures();
+  const { state, stopEditingClosure, selectClosure } = useClosures();
   const { editingClosure, editLoading } = state;
+
+  // Auto-select closure when a ?highlight=<id> permalink is loaded
+  useEffect(() => {
+    if (!highlightId) return;
+    const id = parseInt(highlightId, 10);
+    if (isNaN(id)) return;
+    closuresApi.getClosure(id)
+      .then(closure => selectClosure(closure))
+      .catch(() => {});
+  }, [highlightId, selectClosure]);
 
   // Route state 
   const [routeState, setRouteState] = useState<{
