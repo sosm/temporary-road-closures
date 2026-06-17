@@ -395,6 +395,17 @@ try:
 except ImportError:
     logger.warning("Import router not found, skipping...")
 
+# Add Routing router
+try:
+    from app.api import routing
+
+    app.include_router(
+        routing.router, prefix=f"{settings.API_V1_STR}/routing", tags=["routing"]
+    )
+    logger.info("Routing router included successfully")
+except ImportError:
+    logger.warning("Routing router not found, skipping...")
+
 
 # Custom OpenAPI schema with proper authentication
 def custom_openapi():

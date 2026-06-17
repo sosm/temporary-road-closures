@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     OSM_API_BASE_URL: str = "https://api.openstreetmap.org/api/0.6"
     NOMINATIM_API_URL: str = "https://nominatim.openstreetmap.org"
 
+    # Valhalla routing engine
+    VALHALLA_URL: str = "http://valhalla:8002"
+    VALHALLA_TIMEOUT_SECONDS: float = 10.0
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

@@ -94,6 +94,7 @@ temporary-road-closures/
 -   **Real-time Processing**: Live calculation of optimal routes considering current closures
 
 [📖 **View Routing Documentation**](./frontend/README.md#closure-aware-routing)
+[🔌 **Closure-Aware Routing API Reference**](./docs/CLOSURE_AWARE_ROUTING.md)
 
 ## 🚀 Quick Start
 
