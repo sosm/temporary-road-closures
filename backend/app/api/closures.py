@@ -212,6 +212,27 @@ async def query_closures(
 
 
 @router.get(
+    "/types",
+    summary="List valid closure types",
+    description="Returns all valid `closure_type` values accepted by the API.",
+)
+async def get_closure_types():
+    """
+    Return all valid closure type values accepted by the API.
+
+    Use these values when creating closures or filtering by `closure_type`.
+    Each entry contains:
+
+    - **value**: the string sent in API requests
+    - **label**: human-readable display name
+    """
+    return [
+        {"value": ct.value, "label": ct.value.replace("_", " ").title()}
+        for ct in ClosureType
+    ]
+
+
+@router.get(
     "/{closure_id}",
     response_model=ClosureResponse,
     summary="Get closure by ID",
