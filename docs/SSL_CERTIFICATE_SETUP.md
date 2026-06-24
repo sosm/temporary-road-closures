@@ -349,4 +349,4 @@ echo | openssl s_client -servername closures.osm.ch -connect closures.osm.ch:443
 If you encounter issues not covered in this guide:
 1. Check certbot logs: `/var/log/letsencrypt/letsencrypt.log`
 2. Review nginx logs: `docker-compose -f docker-compose.prod.yml logs nginx`
-3. Contact the project maintainers: architrathod77@gmail.com
+3. Contact the project maintainers: closures@sosm.ch

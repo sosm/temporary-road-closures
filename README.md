@@ -421,14 +421,14 @@ This project welcomes contributions from the OpenStreetMap community and develop
 -   **Bug Reports**: [GitHub Issues](https://github.com/sosm/temporary-road-closures/issues)
 -   **Feature Requests**: [GitHub Discussions](https://github.com/sosm/temporary-road-closures/discussions)
 -   **Documentation**: Improvements and clarifications always welcome!
--   **Security Issues**: Email directly to architrathod77@gmail.com
+-   **Security Issues**: Email directly to closures@sosm.ch
 
 ### 💬 Community
 
 -   **OSM Forum**: [community.openstreetmap.org](https://community.openstreetmap.org/)
 -   **OSM Mailing Lists**: [lists.openstreetmap.org](https://lists.openstreetmap.org/)
 -   **GitHub Discussions**: [Project Discussions](https://github.com/sosm/temporary-road-closures/discussions)
--   **Developer Contact**: architrathod77@gmail.com
+-   **Developer Contact**: closures@sosm.ch
 
 ### 🎯 Contribution Areas
 

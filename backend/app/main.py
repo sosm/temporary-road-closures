@@ -487,7 +487,7 @@ This API uses **OAuth2 Password Bearer** authentication with JWT tokens.
     openapi_schema["info"]["contact"] = {
         "name": "OSM Road Closures API Support",
         "url": "https://github.com/sosm/temporary-road-closures",
-        "email": "architrathod77@gmail.com",
+        "email": "closures@sosm.ch",
     }
 
     openapi_schema["info"]["license"] = {
