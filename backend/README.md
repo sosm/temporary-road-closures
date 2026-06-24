@@ -651,22 +651,31 @@ This project is licensed under the **GNU Affero General Public License v3.0** (A
 
 ### Project Information
 
--   **Repository**: [temporary-road-closures](https://github.com/sosm/temporary-road-closures)
+#### 2025
+
+-   **Repository**: [temporary-road-closures](https://github.com/archit1706/temporary-road-closures)
 -   **GSoC Project**: [Google Summer of Code 2025](https://summerofcode.withgoogle.com/programs/2025/projects/tF4ccCqZ)
 -   **Developer**: **Archit Rathod** (architrathod77@gmail.com)
+  - **Email**: arath21@uic.edu
+  -   **GitHub**: [@Archit1706](https://github.com/Archit1706)
+  -   **LinkedIn**: [Archit Rathod](https://www.linkedin.com/in/archit-rathod/)
+  -   **Portfolio**: [archit-rathod.vercel.app](https://archit-rathod.vercel.app)
 -   **Mentor**: **Simon Poole** (OpenStreetMap Foundation)
 -   **Mentor**: **Ian Wagner** (Stadia Maps)
 -   **Organization**: **OpenStreetMap Foundation**
 -   **OSM Diary**: [OSM Diary Link](https://www.openstreetmap.org/user/Archit%20Rathod/diary/406815)
 
-### Professional Contact
+#### 2026
 
--   **Email**: arath21@uic.edu
--   **GitHub**: [@Archit1706](https://github.com/Archit1706)
--   **LinkedIn**: [Archit Rathod](https://www.linkedin.com/in/archit-rathod/)
--   **Portfolio**: [archit-rathod.vercel.app](https://archit-rathod.vercel.app)
+-   **Repository**: [temporary-road-closures](https://github.com/sosm/temporary-road-closures)
+-   **GSoC Project**: [Google Summer of Code 2026](https://summerofcode.withgoogle.com/organizations/openstreetmap/programs/2026/proposals/details/IYriNJmF)
+-   **Developer**: **Venetis Charalampidis** (charvenetis@gmail.com)
+-   **Mentor**: **Simon Poole** (OpenStreetMap Foundation)
+-   **Backup Mentor**: **David Haberthür**
+-   **Organization**: **OpenStreetMap Foundation**
+-   **OSM Diary**: [OSM Diary Link](https://www.openstreetmap.org/user/Venetis%20Charalampidis/diary/408696)
 
-### Community
+### Community Resources
 
 -   **OpenStreetMap**: [OSM Wiki](https://wiki.openstreetmap.org/)
 -   **OSM Mailing Lists**: [OpenStreetMap Lists](https://lists.openstreetmap.org/)
