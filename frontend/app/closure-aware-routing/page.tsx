@@ -110,24 +110,13 @@ const ClosureAwareRoutingPage: React.FC = () => {
         }
     }, []);
 
-    // Filter closures by transportation mode
-    const filterClosuresByMode = useCallback((closures: Closure[], mode: TransportationMode) => {
-        return closures.filter(closure => {
-            // Only consider active closures
-            if (closure.status !== 'active') return false;
-
-            // Check if this closure affects the selected transportation mode
-            return doesClosureAffectMode(closure, mode);
-        });
-    }, []);
-
-    // Calculate route with Valhalla API
-    const calculateRoute = useCallback(async (
+    // Calculate a route via Valhalla directly, optionally excluding closure points.
+    const calculateValhallaRoute = useCallback(async (
         source: RoutePoint,
         destination: RoutePoint,
         mode: TransportationMode,
         excludeLocations: [number, number][] = []
-    ) => {
+    ): Promise<CalculatedRoute> => {
         const valhallaRequest = {
             locations: [
                 { lat: source.lat, lon: source.lng, type: 'break' as const },
@@ -138,6 +127,7 @@ const ClosureAwareRoutingPage: React.FC = () => {
                 units: 'kilometers' as const,
                 format: 'json' as const
             },
+            // Valhalla caps exclude_locations at 50; keep within limit.
             ...(excludeLocations.length > 0 && {
                 exclude_locations: excludeLocations.map(([lat, lng]) => ({ lat, lon: lng })).slice(0, 49)
             }),
@@ -182,6 +172,76 @@ const ClosureAwareRoutingPage: React.FC = () => {
         }
     }, []);
 
+    // Baseline route for the comparison card — always direct Valhalla, no exclusions.
+    const calculateDirectRoute = useCallback((
+        source: RoutePoint,
+        destination: RoutePoint,
+        mode: TransportationMode
+    ): Promise<CalculatedRoute> => {
+        return calculateValhallaRoute(source, destination, mode, []);
+    }, [calculateValhallaRoute]);
+
+    // Closure-aware route via backend; server-side exclusion via exclude_polygons
+    const calculateClosureAwareRoute = useCallback(async (
+        source: RoutePoint,
+        destination: RoutePoint,
+        mode: TransportationMode
+    ): Promise<CalculatedRoute> => {
+        const requestBody = {
+            start: { type: 'Point' as const, coordinates: [source.lng, source.lat] },
+            end: { type: 'Point' as const, coordinates: [destination.lng, destination.lat] },
+            mode,
+        };
+
+        let response: Response;
+        try {
+            response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/routing/closure-aware`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                }
+            );
+        } catch (error) {
+            console.error('Closure-aware routing error:', error);
+            throw new Error('Routing service is temporarily unavailable.');
+        }
+
+        if (!response.ok) {
+            if (response.status === 504) {
+                throw new Error('Routing request timed out. Please try again.');
+            }
+            if (response.status >= 500) {
+                throw new Error('Routing service is temporarily unavailable.');
+            }
+            // Tag status so the caller can fall back on 400/404 (e.g. outside Switzerland).
+            const e = new Error('Failed to calculate route. Please try again.');
+            (e as any).status = response.status;
+            throw e;
+        }
+
+        const data = await response.json();
+
+        const shape = data.trip?.legs?.[0]?.shape;
+        if (!shape) {
+            throw new Error('No route shape returned');
+        }
+
+        const coordinates = decodePolyline(shape, 6);
+
+        return {
+            coordinates,
+            distance: data.trip.summary.length,
+            duration: data.trip.summary.time / 60, // Convert to minutes
+            avoidedClosures: data.excluded_closures ?? 0,
+            excludedPoints: []
+        };
+    }, []);
+
     // Handle route calculation
     const handleCalculateRoute = useCallback(async () => {
         if (!sourcePoint || !destinationPoint) {
@@ -193,43 +253,42 @@ const ClosureAwareRoutingPage: React.FC = () => {
         setError(null);
 
         try {
-            // 1. Calculate bounding box with buffer
+            // 1. Fetch closures for visualization; server-side routing handles exclusion.
             const bbox = calculateBoundingBox(sourcePoint, destinationPoint);
             console.log('🗺️ Calculated bounding box:', bbox);
 
-            // 2. Fetch closures in the path
             const allClosures = await fetchClosuresInPath(bbox);
             console.log('🚧 Found total closures in path:', allClosures.length);
             setClosuresInPath(allClosures);
 
-            // 3. Filter closures by transportation mode
-            const relevantClosuresForMode = filterClosuresByMode(allClosures, transportationMode);
-            console.log(`🚧 Found closures relevant to ${transportationMode}:`, relevantClosuresForMode.length);
-
-            // 4. Extract exclude locations from relevant closures only
+            // 2. Build mode-filtered exclude_locations for the outside-Switzerland fallback.
             const excludeLocations: [number, number][] = [];
-            relevantClosuresForMode.forEach((closure: Closure) => {
-                if (closure.status === 'active' && closure.geometry) {
-                    if (closure.geometry.type === 'Point') {
-                        const [lng, lat] = closure.geometry.coordinates as number[];
-                        excludeLocations.push([lat, lng]);
-                    } else if (closure.geometry.type === 'LineString') {
-                        (closure.geometry.coordinates as number[][]).forEach((coord: number[]) => {
-                            const [lng, lat] = coord;
-                            excludeLocations.push([lat, lng]);
-                        });
-                    }
+            allClosures.forEach((closure: Closure) => {
+                if (closure.status !== 'active' || !doesClosureAffectMode(closure, transportationMode) || !closure.geometry) return;
+                if (closure.geometry.type === 'Point') {
+                    const [lng, lat] = closure.geometry.coordinates as number[];
+                    excludeLocations.push([lat, lng]);
+                } else if (closure.geometry.type === 'LineString') {
+                    (closure.geometry.coordinates as number[][]).forEach(([lng, lat]) => excludeLocations.push([lat, lng]));
                 }
             });
 
-            console.log(`🚫 Exclude locations for ${transportationMode}:`, excludeLocations.length);
+            // 3. Run direct and closure-aware routes in parallel; fall back to Valhalla on 400/404
+            const [directRouteResult, closureAwareRoute] = await Promise.all([
+                calculateDirectRoute(sourcePoint, destinationPoint, transportationMode),
+                (async () => {
+                    try {
+                        return await calculateClosureAwareRoute(sourcePoint, destinationPoint, transportationMode);
+                    } catch (err: any) {
+                        if (err?.status === 400 || err?.status === 404) {
+                            return calculateValhallaRoute(sourcePoint, destinationPoint, transportationMode, excludeLocations);
+                        }
+                        throw err;
+                    }
+                })(),
+            ]);
 
-            // 5. Calculate direct route (no exclusions)
-            const directRouteResult = await calculateRoute(sourcePoint, destinationPoint, transportationMode, []);
             setDirectRoute(directRouteResult);
-
-            // 6. Calculate closure-aware route
-            const closureAwareRoute = await calculateRoute(sourcePoint, destinationPoint, transportationMode, excludeLocations);
             setRoute(closureAwareRoute);
 
             console.log(`✅ ${transportationMode} routes calculated successfully`);
@@ -239,7 +298,7 @@ const ClosureAwareRoutingPage: React.FC = () => {
         } finally {
             setIsCalculating(false);
         }
-    }, [sourcePoint, destinationPoint, transportationMode, calculateBoundingBox, fetchClosuresInPath, filterClosuresByMode, calculateRoute]);
+    }, [sourcePoint, destinationPoint, transportationMode, calculateBoundingBox, fetchClosuresInPath, calculateDirectRoute, calculateClosureAwareRoute, calculateValhallaRoute]);
 
     // Clear route
     const handleClearRoute = useCallback(() => {
@@ -464,6 +523,7 @@ const ClosureAwareRoutingPage: React.FC = () => {
                         <span>Powered by Valhalla routing engine</span>
                     </div>
                     <div>Uses OpenStreetMap data and transportation-aware closure filtering</div>
+                    <div className="font-semibold text-gray-600">Coverage: Switzerland only</div>
                     <div className="font-bold text-gray-600">
                         {closuresInPath.filter(c => doesClosureAffectMode(c, transportationMode)).length} of {closuresInPath.length} closures affect {transportationMode}
                     </div>
@@ -534,6 +594,7 @@ const ClosureAwareRoutingPage: React.FC = () => {
                                     <Info className="w-3 h-3" />
                                     <span>Powered by Valhalla routing engine</span>
                                 </div>
+                                <div className="text-[10px] font-semibold text-gray-600 mt-1">Coverage: Switzerland only</div>
                             </div>
                         }
                     >
