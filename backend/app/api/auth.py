@@ -2,7 +2,7 @@
 Authentication endpoints for the OSM Road Closures API.
 """
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status, Response, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -77,7 +77,7 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     summary="User login",
     description="Authenticate user and return access token (OAuth2 compatible).",
 )
-async def login(login_data: UserLogin = Body(...), db: Session = Depends(get_db)):
+async def login(form_data: UserLogin = Depends(), db: Session = Depends(get_db)):
     """
     Authenticate user with username/email and password (OAuth2 compatible).
 
@@ -97,6 +97,9 @@ async def login(login_data: UserLogin = Body(...), db: Session = Depends(get_db)
     """
     try:
         user_service = UserService(db)
+
+        # Create UserLogin object from OAuth2 form data
+        login_data = UserLogin(username=form_data.username, password=form_data.password)
 
         user = user_service.authenticate_user(login_data)
 
