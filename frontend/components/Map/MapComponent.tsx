@@ -216,8 +216,17 @@ const MapEventHandler: React.FC<{
     const { state, fetchClosures, selectClosure } = useClosures();
     const { closures, selectedClosure } = state;
     const closureLayersRef = useRef<L.LayerGroup>(new L.LayerGroup());
+    const closureLayersByIdRef = useRef<Map<number, L.Layer>>(new Map());
     const selectionLayersRef = useRef<L.LayerGroup>(new L.LayerGroup());
     const routeLayersRef = useRef<L.LayerGroup>(new L.LayerGroup());
+
+    // Tracks the current selection without being a dependency of the layer-
+    // rebuild effect below, so selecting a closure doesn't itself retrigger
+    // a rebuild (which would destroy the popup the selection just opened).
+    const selectedClosureRef = useRef(selectedClosure);
+    useEffect(() => {
+        selectedClosureRef.current = selectedClosure;
+    }, [selectedClosure]);
 
     const [routingState, setRoutingState] = useState<{
         isRouting: boolean;
@@ -462,7 +471,9 @@ const MapEventHandler: React.FC<{
     // Update closures on map
     useEffect(() => {
         const layerGroup = closureLayersRef.current;
+        const layersById = closureLayersByIdRef.current;
         layerGroup.clearLayers();
+        layersById.clear();
 
         closures.forEach((closure) => {
             const { points, isValid } = extractCoordinates(closure);
@@ -509,29 +520,53 @@ const MapEventHandler: React.FC<{
                     selectClosure(closure);
                 });
 
-                // Highlight selected closure
-                if (selectedClosure?.id === closure.id) {
-                    if (layer instanceof L.Marker) {
-                        layer.setZIndexOffset(1000);
-                    } else if (layer instanceof L.Polyline) {
-                        layer.setStyle({
-                            color: '#3b82f6',
-                            weight: 8,
-                            opacity: 1,
-                        });
-                    }
-                }
-
+                layersById.set(closure.id, layer);
                 layerGroup.addLayer(layer);
             }
         });
 
         layerGroup.addTo(map);
 
+        // The closure data driving this effect can change (e.g. a bbox
+        // refetch after panning to a selection) independently of the user
+        // selecting anything. If a closure is currently selected, restore
+        // its popup on the freshly-rebuilt layer rather than leaving it
+        // closed.
+        const currentSelection = selectedClosureRef.current;
+        if (currentSelection) {
+            const selectedLayer = layersById.get(currentSelection.id);
+            if (selectedLayer instanceof L.Marker || selectedLayer instanceof L.Polyline) {
+                selectedLayer.openPopup();
+            }
+        }
+
         return () => {
             layerGroup.clearLayers();
+            layersById.clear();
         };
-    }, [closures, selectedClosure, map, selectClosure]);
+    }, [closures, map, selectClosure]);
+
+    // Highlight the selected closure without rebuilding the layer set -
+    // rebuilding on every selection (e.g. on marker click, which also opens
+    // a popup) destroys the just-created popup before it can be seen.
+    useEffect(() => {
+        closureLayersByIdRef.current.forEach((layer, id) => {
+            const isSelected = selectedClosure?.id === id;
+
+            if (layer instanceof L.Marker) {
+                layer.setZIndexOffset(isSelected ? 1000 : 0);
+            } else if (layer instanceof L.Polyline) {
+                const closure = closures.find((c) => c.id === id);
+                const baseColor = closure ? getClosureColor(closure) : '#6b7280';
+
+                layer.setStyle(
+                    isSelected
+                        ? { color: '#3b82f6', weight: 8, opacity: 1 }
+                        : { color: baseColor, weight: 6, opacity: 0.8 }
+                );
+            }
+        });
+    }, [selectedClosure, closures]);
 
     // Focus on selected closure
     useEffect(() => {
