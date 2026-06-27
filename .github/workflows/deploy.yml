@@ -33,6 +33,10 @@ jobs:
                   pip install pip-audit
                   pip-audit -r backend/requirements.txt
 
+            - name: Run backend tests
+              working-directory: ./backend
+              run: pytest tests/ -v
+
             - name: Install frontend dependencies
               working-directory: ./frontend
               run: |
