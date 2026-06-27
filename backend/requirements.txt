@@ -14,12 +14,12 @@ geoalchemy2==0.14.2
 # Data validation and settings (with email support)
 email-validator==2.3.0
 pydantic[email]==2.13.4
-pydantic-settings==2.14.1
+pydantic-settings==2.14.2
 
 # Authentication and security
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-python-multipart==0.0.27
+python-multipart==0.0.31
 PyJWT==2.13.0
 
 # Caching and async
