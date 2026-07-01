@@ -282,11 +282,14 @@ frontend/
 3. **Set Route Points**:
     - Enter addresses or click on map
     - Select start and destination locations
-4. **Calculate Route**: System automatically:
-    - Finds closures in route area
-    - Filters by transportation mode relevance
-    - Calculates closure-aware route with Valhalla
-    - Shows comparison with direct route
+4. **Calculate Route**: The frontend sends the start, destination, and mode to the
+   backend `POST /api/v1/routing/closure-aware` endpoint, which:
+    - Fetches currently-active closures relevant to the transportation mode
+    - Calculates a route that avoids them (via Valhalla, server-side)
+    - Returns the route along with the list of closures used
+    - The frontend shows a comparison against a direct (closure-agnostic) route
+    - **Coverage: Switzerland only.** Outside coverage, the frontend falls back to
+      a direct Valhalla call, excluding closures client-side.
 5. **Review Results**:
     - Distance and time comparison
     - Number of closures avoided
@@ -773,29 +776,19 @@ This project is licensed under the **GNU Affero General Public License v3.0** (A
 
 ### Project Information
 
-#### 2025
-
--   **Repository**: [temporary-road-closures](https://github.com/archit1706/temporary-road-closures)
+-   **Repository**: [temporary-road-closures](https://github.com/sosm/temporary-road-closures)
 -   **GSoC Project**: [Google Summer of Code 2025](https://summerofcode.withgoogle.com/programs/2025/projects/tF4ccCqZ)
 -   **Developer**: **Archit Rathod** (architrathod77@gmail.com)
-  - **Email**: arath21@uic.edu
-  -   **GitHub**: [@Archit1706](https://github.com/Archit1706)
-  -   **LinkedIn**: [Archit Rathod](https://www.linkedin.com/in/archit-rathod/)
-  -   **Portfolio**: [archit-rathod.vercel.app](https://archit-rathod.vercel.app)
 -   **Mentor**: **Simon Poole** (OpenStreetMap Foundation)
 -   **Mentor**: **Ian Wagner** (Stadia Maps)
 -   **Organization**: **OpenStreetMap Foundation**
--   **OSM Diary**: [OSM Diary Link](https://www.openstreetmap.org/user/Archit%20Rathod/diary/406815)
 
-#### 2026
+### Professional Contact
 
--   **Repository**: [temporary-road-closures](https://github.com/sosm/temporary-road-closures)
--   **GSoC Project**: [Google Summer of Code 2026](https://summerofcode.withgoogle.com/organizations/openstreetmap/programs/2026/proposals/details/IYriNJmF)
--   **Developer**: **Venetis Charalampidis** (charvenetis@gmail.com)
--   **Mentor**: **Simon Poole** (OpenStreetMap Foundation)
--   **Backup Mentor**: **David Haberthür**
--   **Organization**: **OpenStreetMap Foundation**
--   **OSM Diary**: [OSM Diary Link](https://www.openstreetmap.org/user/Venetis%20Charalampidis/diary/408696)
+-   **Email**: arath21@uic.edu
+-   **GitHub**: [@Archit1706](https://github.com/Archit1706)
+-   **LinkedIn**: [Archit Rathod](https://www.linkedin.com/in/archit-rathod/)
+-   **Portfolio**: [archit-rathod.vercel.app](https://archit-rathod.vercel.app)
 
 ### Community Resources
 

@@ -3,10 +3,11 @@ Pydantic schemas for closure-aware routing requests and responses.
 """
 
 from enum import Enum
+from typing import List
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.schemas.closure import GeoJSONGeometry
+from app.schemas.closure import ClosureResponse, GeoJSONGeometry
 
 
 class RoutingMode(str, Enum):
@@ -69,7 +70,9 @@ class RouteResponse(BaseModel):
     defining the full trip/leg/maneuver schema is intentionally out of scope (it
     is brittle against Valhalla version changes). ``excluded_closures`` reports
     how many active closures were buffered and sent to Valhalla as
-    ``exclude_polygons``.
+    ``exclude_polygons``. ``closures`` is the list of active closures fetched for
+    this route (same set used to build ``exclude_polygons``), so the client can
+    display them without a separate query.
     """
 
     trip: dict = Field(
@@ -77,4 +80,8 @@ class RouteResponse(BaseModel):
     )
     excluded_closures: int = Field(
         ..., description="Number of active closures excluded from the route"
+    )
+    closures: List[ClosureResponse] = Field(
+        default_factory=list,
+        description="Active closures fetched for this route",
     )

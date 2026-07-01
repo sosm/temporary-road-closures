@@ -16,6 +16,7 @@ from app.schemas.routing import RoutingMode
 from app.services.routing_service import RoutingError, get_route_with_closures
 
 # A LineString closure near Zurich; buffer_closure turns it into a Polygon.
+# The closures used to build exclude_polygons are returned as-is.
 _LINE_CLOSURE = {
     "id": 1,
     "closure_type": "construction",
@@ -24,7 +25,18 @@ _LINE_CLOSURE = {
         "type": "LineString",
         "coordinates": [[8.5410, 47.3760], [8.5450, 47.3780]],
     },
-    "geometry_type": "LineString",
+    "description": "Water main repair near Zurich",
+    "start_time": "2025-06-01T08:00:00Z",
+    "end_time": "2025-06-01T18:00:00Z",
+    "status": "active",
+    "source": "Test",
+    "confidence_level": 9,
+    "is_bidirectional": False,
+    "submitter_id": 1,
+    "created_at": "2025-05-29T14:30:00Z",
+    "updated_at": "2025-05-29T14:30:00Z",
+    "is_valid": True,
+    "duration_hours": 10.0,
 }
 
 _START = GeoJSONGeometry(type="Point", coordinates=[8.5417, 47.3769])
@@ -69,7 +81,7 @@ async def test_body_has_exclude_polygons_and_swapped_locations():
 
     cm, mock_post = _patch_post(response=_mock_response())
     with cm:
-        trip, excluded = await get_route_with_closures(
+        trip, excluded, closures = await get_route_with_closures(
             _START, _END, RoutingMode.AUTO, closure_service, spatial_service
         )
 
@@ -77,6 +89,8 @@ async def test_body_has_exclude_polygons_and_swapped_locations():
     # (response.json()["trip"]), not the full envelope.
     assert trip == _VALHALLA_OK["trip"]
     assert excluded == 1
+    # The closures used to build exclude_polygons are returned as-is.
+    assert closures == [_LINE_CLOSURE]
 
     _, kwargs = mock_post.call_args
     body = kwargs["json"]
@@ -115,7 +129,7 @@ async def test_no_closures_omits_exclude_polygons():
 
     cm, mock_post = _patch_post(response=_mock_response())
     with cm:
-        _, excluded = await get_route_with_closures(
+        _, excluded, _ = await get_route_with_closures(
             _START, _END, RoutingMode.AUTO, closure_service, spatial_service
         )
     assert excluded == 0
@@ -182,7 +196,7 @@ async def test_endpoint_returns_trip_passthrough():
     try:
         with patch(
             "app.api.routing.get_route_with_closures",
-            new=AsyncMock(return_value=(_VALHALLA_OK, 0)),
+            new=AsyncMock(return_value=(_VALHALLA_OK, 0, [])),
         ):
             resp = await _post_route()
     finally:
@@ -192,6 +206,7 @@ async def test_endpoint_returns_trip_passthrough():
     data = resp.json()
     assert data["trip"] == _VALHALLA_OK
     assert data["excluded_closures"] == 0
+    assert data["closures"] == []
 
 
 @pytest.mark.asyncio
@@ -285,7 +300,11 @@ async def test_endpoint_sends_exclude_polygons_when_closures_active(mode):
         app.dependency_overrides.pop(get_db, None)
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["excluded_closures"] == 1
+    data = resp.json()
+    assert data["excluded_closures"] == 1
+    # The fetched closure is returned in the response for the client to display.
+    assert len(data["closures"]) == 1
+    assert data["closures"][0]["id"] == _LINE_CLOSURE["id"]
 
     body = mock_post.call_args.kwargs["json"]
     assert body["costing"] == mode

@@ -10,12 +10,14 @@ The endpoint computes a [Valhalla](https://valhalla.github.io/valhalla/) route
 between two points while avoiding road closures that are **currently active** and
 **relevant to the requested transportation mode**.
 
-It exists to provide server-side closure avoidance that the frontend does not do
-on its own. The frontend (`frontend/services/valhallaApi.ts`) calls Valhalla
-directly and excludes *no* closures. This endpoint sits in front of Valhalla,
-fetches active closures from the database, turns them into avoidance polygons,
-and passes them to Valhalla as `exclude_polygons` — so the returned route routes
-around them.
+It provides server-side closure avoidance: it sits in front of Valhalla, fetches
+active closures from the database, turns them into avoidance polygons, and passes
+them to Valhalla as `exclude_polygons` — so the returned route routes around them.
+
+The frontend routing page (`frontend/app/closure-aware-routing/page.tsx`) calls
+this endpoint for its closure-aware route. It only falls back to calling Valhalla
+directly — excluding closures client-side via `exclude_locations` — when this
+endpoint returns `400`/`404` (e.g. for points outside Switzerland).
 
 Authentication is **optional**: anonymous callers get routing just like
 authenticated ones.
@@ -57,7 +59,8 @@ Example response (trimmed):
     "legs": [ /* ... maneuvers, shape ... */ ],
     "locations": [ /* ... */ ]
   },
-  "excluded_closures": 1
+  "excluded_closures": 1,
+  "closures": [ /* ClosureResponse objects: id, geometry, closure_type, status, is_bidirectional, source, ... */ ]
 }
 ```
 
@@ -65,6 +68,10 @@ Example response (trimmed):
   `locations`), passed through untyped.
 - `excluded_closures` is the number of active closures that were buffered and
   sent to Valhalla as `exclude_polygons` for this request.
+- `closures` is the array of active closures fetched for this route (the same set
+  buffered into `exclude_polygons`), returned so clients can display them without
+  a separate query. Each item is a `ClosureResponse` (see
+  `backend/app/schemas/closure.py`).
 
 ## How it works
 
@@ -77,6 +84,9 @@ Example response (trimmed):
    true metres anywhere.
 3. **Route around them** — the buffered polygons are sent to Valhalla as
    `exclude_polygons`, and the costing model is set from `mode`.
+
+The same closures fetched in step 1 are also returned in the response
+(`closures`), so the client can display them without a separate query.
 
 ### Buffer rules
 
@@ -95,7 +105,7 @@ than failing the whole route.
 | ----------------- | ------------------------------------------ | -------------------- |
 | Closure avoidance | Active closures injected as `exclude_polygons` | None |
 | Input format      | GeoJSON `Point` (`[lon, lat]`)             | Valhalla `{lat, lon}` locations |
-| Response          | `{ trip, excluded_closures }`              | Raw Valhalla response |
+| Response          | `{ trip, excluded_closures, closures }`    | Raw Valhalla response |
 | Mode → costing    | Validated `auto`/`bicycle`/`pedestrian`    | Any Valhalla costing |
 | Error handling    | Normalised HTTP status + user-safe message | Raw Valhalla errors |
 
