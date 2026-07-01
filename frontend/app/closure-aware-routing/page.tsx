@@ -181,12 +181,12 @@ const ClosureAwareRoutingPage: React.FC = () => {
         return calculateValhallaRoute(source, destination, mode, []);
     }, [calculateValhallaRoute]);
 
-    // Closure-aware route via backend; server-side exclusion via exclude_polygons
+    // Closure-aware route via backend; returns the route plus the closures it used.
     const calculateClosureAwareRoute = useCallback(async (
         source: RoutePoint,
         destination: RoutePoint,
         mode: TransportationMode
-    ): Promise<CalculatedRoute> => {
+    ): Promise<{ route: CalculatedRoute; closures: Closure[] }> => {
         const requestBody = {
             start: { type: 'Point' as const, coordinates: [source.lng, source.lat] },
             end: { type: 'Point' as const, coordinates: [destination.lng, destination.lat] },
@@ -234,11 +234,15 @@ const ClosureAwareRoutingPage: React.FC = () => {
         const coordinates = decodePolyline(shape, 6);
 
         return {
-            coordinates,
-            distance: data.trip.summary.length,
-            duration: data.trip.summary.time / 60, // Convert to minutes
-            avoidedClosures: data.excluded_closures ?? 0,
-            excludedPoints: []
+            route: {
+                coordinates,
+                distance: data.trip.summary.length,
+                duration: data.trip.summary.time / 60, // Convert to minutes
+                avoidedClosures: data.excluded_closures ?? 0,
+                excludedPoints: []
+            },
+            // Closures the backend fetched and excluded; used for display.
+            closures: (data.closures ?? []) as Closure[]
         };
     }, []);
 
@@ -253,45 +257,39 @@ const ClosureAwareRoutingPage: React.FC = () => {
         setError(null);
 
         try {
-            // 1. Fetch closures for visualization; server-side routing handles exclusion.
-            const bbox = calculateBoundingBox(sourcePoint, destinationPoint);
-            console.log('🗺️ Calculated bounding box:', bbox);
-
-            const allClosures = await fetchClosuresInPath(bbox);
-            console.log('🚧 Found total closures in path:', allClosures.length);
-            setClosuresInPath(allClosures);
-
-            // 2. Build mode-filtered exclude_locations for the outside-Switzerland fallback.
-            const excludeLocations: [number, number][] = [];
-            allClosures.forEach((closure: Closure) => {
-                if (closure.status !== 'active' || !doesClosureAffectMode(closure, transportationMode) || !closure.geometry) return;
-                if (closure.geometry.type === 'Point') {
-                    const [lng, lat] = closure.geometry.coordinates as number[];
-                    excludeLocations.push([lat, lng]);
-                } else if (closure.geometry.type === 'LineString') {
-                    (closure.geometry.coordinates as number[][]).forEach(([lng, lat]) => excludeLocations.push([lat, lng]));
-                }
-            });
-
-            // 3. Run direct and closure-aware routes in parallel; fall back to Valhalla on 400/404
-            const [directRouteResult, closureAwareRoute] = await Promise.all([
+            // Run direct and closure-aware routes in parallel; closures come from the
+            // backend on success, or from a bbox fetch on the 400/404 fallback path.
+            const [directRouteResult, closureAwareResult] = await Promise.all([
                 calculateDirectRoute(sourcePoint, destinationPoint, transportationMode),
-                (async () => {
+                (async (): Promise<{ route: CalculatedRoute; closures: Closure[] }> => {
                     try {
                         return await calculateClosureAwareRoute(sourcePoint, destinationPoint, transportationMode);
                     } catch (err: any) {
-                        if (err?.status === 400 || err?.status === 404) {
-                            return calculateValhallaRoute(sourcePoint, destinationPoint, transportationMode, excludeLocations);
-                        }
-                        throw err;
+                        if (err?.status !== 400 && err?.status !== 404) throw err;
+                        // Fallback (e.g. outside Switzerland): fetch closures by bbox and
+                        // exclude them client-side via Valhalla.
+                        const bbox = calculateBoundingBox(sourcePoint, destinationPoint);
+                        const fallbackClosures: Closure[] = await fetchClosuresInPath(bbox);
+                        const excludeLocations: [number, number][] = [];
+                        fallbackClosures.forEach((closure: Closure) => {
+                            if (closure.status !== 'active' || !doesClosureAffectMode(closure, transportationMode) || !closure.geometry) return;
+                            if (closure.geometry.type === 'Point') {
+                                const [lng, lat] = closure.geometry.coordinates as number[];
+                                excludeLocations.push([lat, lng]);
+                            } else if (closure.geometry.type === 'LineString') {
+                                (closure.geometry.coordinates as number[][]).forEach(([lng, lat]) => excludeLocations.push([lat, lng]));
+                            }
+                        });
+                        const route = await calculateValhallaRoute(sourcePoint, destinationPoint, transportationMode, excludeLocations);
+                        return { route, closures: fallbackClosures };
                     }
                 })(),
             ]);
 
             setDirectRoute(directRouteResult);
-            setRoute(closureAwareRoute);
+            setRoute(closureAwareResult.route);
+            setClosuresInPath(closureAwareResult.closures);
 
-            console.log(`✅ ${transportationMode} routes calculated successfully`);
         } catch (error) {
             console.error('❌ Route calculation failed:', error);
             setError(error instanceof Error ? error.message : 'Failed to calculate route');

@@ -55,7 +55,8 @@ async def closure_aware_route(
        (LineString 10m, Point 15m; Polygon/MultiPolygon used as-is).
     3. Sends them to Valhalla as ``exclude_polygons``.
 
-    **Returns:** Valhalla's trip object plus the number of excluded closures.
+    **Returns:** Valhalla's trip object, the number of excluded closures, and the
+    list of closure objects used for avoidance.
 
     **Error codes:**
     - ``400`` — invalid routing request (e.g. unroutable input points).
@@ -70,7 +71,7 @@ async def closure_aware_route(
     spatial_service = SpatialService(db)
 
     try:
-        trip, excluded = await get_route_with_closures(
+        trip, excluded, closures = await get_route_with_closures(
             start=request.start,
             end=request.end,
             mode=request.mode,
@@ -85,4 +86,4 @@ async def closure_aware_route(
             status_code=500, detail=f"Routing failed: {str(exc)}"
         )
 
-    return RouteResponse(trip=trip, excluded_closures=excluded)
+    return RouteResponse(trip=trip, excluded_closures=excluded, closures=closures)

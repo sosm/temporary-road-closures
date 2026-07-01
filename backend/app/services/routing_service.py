@@ -83,10 +83,10 @@ async def get_route_with_closures(
     mode: RoutingMode,
     closure_service: ClosureService,
     spatial_service: SpatialService,
-) -> Tuple[Dict[str, Any], int]:
+) -> Tuple[Dict[str, Any], int, List[Dict[str, Any]]]:
     """Compute a Valhalla route that avoids active closures for ``mode``.
 
-    Returns ``(valhalla_json, excluded_closures_count)``.
+    Returns ``(valhalla_json, excluded_closures_count, closures)``.
 
     Raises ``RoutingError`` with an appropriate HTTP status on failure.
     """
@@ -128,4 +128,5 @@ async def get_route_with_closures(
         )
         raise RoutingError(502, "Routing service is temporarily unavailable.")
 
-    return response.json().get("trip", response.json()), len(exclude_polygons)
+    trip = response.json().get("trip", response.json())
+    return trip, len(exclude_polygons), closures

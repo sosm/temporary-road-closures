@@ -969,18 +969,12 @@ class ClosureService:
         bbox: Optional "min_lon,min_lat,max_lon,max_lat" spatial filter.
 
         Returns:
-        list of dicts: ``{"id", "closure_type", "transport_mode",
-        "geometry" (GeoJSON dict), "geometry_type"}`` for affected closures.
+        list of full ``ClosureResponse``-shaped dicts (with GeoJSON ``geometry``)
+        for affected closures, as produced by ``get_closures_with_geometry``.
         """
         now = datetime.now(timezone.utc)
 
-        query = self.db.query(
-            Closure.id,
-            Closure.closure_type,
-            Closure.transport_mode,
-            ST_AsGeoJSON(Closure.geometry),
-            func.ST_GeometryType(Closure.geometry),
-        ).filter(
+        query = self.db.query(Closure).filter(
             Closure.status == ClosureStatus.ACTIVE,
             Closure.start_time <= now,
             or_(Closure.end_time.is_(None), Closure.end_time > now),
@@ -988,33 +982,34 @@ class ClosureService:
 
         # Only filter by bbox when one is provided.
         if bbox:
-            min_lon, min_lat, max_lon, max_lat = self._parse_bbox(bbox)
-            bbox_geom = func.ST_MakeEnvelope(min_lon, min_lat, max_lon, max_lat, 4326)
-            query = query.filter(ST_Intersects(Closure.geometry, bbox_geom))
+            bboxes = self._parse_bbox(bbox)
+            if len(bboxes) == 1:
+                min_lon, min_lat, max_lon, max_lat = bboxes[0]
+                bbox_geom = func.ST_MakeEnvelope(
+                    min_lon, min_lat, max_lon, max_lat, 4326
+                )
+                query = query.filter(ST_Intersects(Closure.geometry, bbox_geom))
+            else:
+                # Antimeridian split: query both halves and return the union.
+                query = query.filter(
+                    or_(
+                        *[
+                            ST_Intersects(
+                                Closure.geometry,
+                                func.ST_MakeEnvelope(b[0], b[1], b[2], b[3], 4326),
+                            )
+                            for b in bboxes
+                        ]
+                    )
+                )
 
-        affected: List[Dict[str, Any]] = []
-        for (
-            closure_id,
-            closure_type,
-            transport_mode,
-            geojson_str,
-            geom_type,
-        ) in query.all():
-            if geojson_str is None:
-                continue
-            if not does_closure_affect_mode(closure_type, transport_mode, routing_mode):
-                continue
-            affected.append(
-                {
-                    "id": closure_id,
-                    "closure_type": closure_type,
-                    "transport_mode": transport_mode,
-                    "geometry": json.loads(geojson_str),
-                    # ST_GeometryType returns e.g. "ST_LineString"; strip prefix.
-                    "geometry_type": geom_type.replace("ST_", "")
-                    if geom_type
-                    else None,
-                }
+        # Apply the mode filter, then serialize survivors with full geometry.
+        affected = [
+            closure
+            for closure in query.all()
+            if does_closure_affect_mode(
+                closure.closure_type, closure.transport_mode, routing_mode
             )
+        ]
 
-        return affected
+        return self.get_closures_with_geometry(affected)
