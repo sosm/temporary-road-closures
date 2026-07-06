@@ -38,7 +38,7 @@ class ValidationException(APIException):
         self.errors = errors or []
         super().__init__(
             message=message,
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             error_code="validation_error",
             details={"errors": self.errors},
         )
