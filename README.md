@@ -491,7 +491,8 @@ This project is licensed under the **GNU Affero General Public License v3.0** (A
 ### 🌟 Special Thanks
 
 -   **[Google Summer of Code](https://summerofcode.withgoogle.com/)** for funding and program support
--   **[OpenStreetMap Foundation](https://osmfoundation.org/)** for hosting, mentorship, and community
+-   **[OpenStreetMap Foundation](https://osmfoundation.org/)** for mentorship, and community
+-   **[Swiss OpenStreetMap Association](https://sosm.ch)** for hosting
 -   **[University of Illinois Chicago](https://www.uic.edu/)** for academic support and research opportunities
 -   **[PostGIS Team](https://postgis.net/)** for powerful geospatial database capabilities
 -   **[FastAPI Team](https://fastapi.tiangolo.com/)** for the excellent Python web framework
