@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { mockClosuresApi } from './mockApi';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API === 'true' || false;
 
 // Create axios instance for real API

@@ -13,6 +13,7 @@ interface ClosuresState {
     user: any | null;
     editingClosure: Closure | null;
     editLoading: boolean;
+    bboxTooLarge: boolean;
 }
 
 // Action types
@@ -27,7 +28,8 @@ type ClosuresAction =
     | { type: 'SET_AUTHENTICATED'; payload: boolean }
     | { type: 'SET_USER'; payload: any | null }
     | { type: 'SET_EDITING_CLOSURE'; payload: Closure | null }
-    | { type: 'SET_EDIT_LOADING'; payload: boolean };
+    | { type: 'SET_EDIT_LOADING'; payload: boolean }
+    | { type: 'SET_BBOX_TOO_LARGE'; payload: boolean };
 
 // Context interface
 interface ClosuresContextType {
@@ -56,6 +58,7 @@ const initialState: ClosuresState = {
     user: null,
     editingClosure: null,
     editLoading: false,
+    bboxTooLarge: false,
 };
 
 // Reducer
@@ -122,6 +125,9 @@ const closuresReducer = (state: ClosuresState, action: ClosuresAction): Closures
 
         case 'SET_EDIT_LOADING':
             return { ...state, editLoading: action.payload };
+
+        case 'SET_BBOX_TOO_LARGE':
+            return { ...state, bboxTooLarge: action.payload };
 
         default:
             return state;
@@ -316,14 +322,29 @@ export const ClosuresProvider: React.FC<ClosuresProviderProps> = ({ children }) 
     const fetchClosures = useCallback(async (bbox?: BoundingBox) => {
         dispatch({ type: 'SET_LOADING', payload: true });
         dispatch({ type: 'SET_ERROR', payload: null });
+        dispatch({ type: 'SET_BBOX_TOO_LARGE', payload: false });
 
         try {
             const closures = await closuresApi.getClosures(bbox);
             dispatch({ type: 'SET_CLOSURES', payload: closures });
+            dispatch({ type: 'SET_BBOX_TOO_LARGE', payload: false });
             console.log(`📍 Fetched ${closures.length} closures`);
         } catch (error) {
             const errorMessage = parseErrorMessage(error);
             dispatch({ type: 'SET_ERROR', payload: errorMessage });
+
+            // Expected, benign case: the map is zoomed out far enough that the
+            // requested bbox exceeds the backend's MAX_BBOX_AREA. Surface this as a
+            // calm inline message in the list panel instead of a toast, and bail out
+            // before the toast branches so repeated pans/zooms don't stack toasts.
+            const isBboxTooLarge = /invalid bounding box|exceeds maximum allowed/i.test(errorMessage);
+            if (isBboxTooLarge) {
+                dispatch({ type: 'SET_BBOX_TOO_LARGE', payload: true });
+                console.log('📍 Bbox too large — prompting user to zoom in');
+                return;
+            }
+
+            dispatch({ type: 'SET_BBOX_TOO_LARGE', payload: false });
 
             if (!authApi.isTokenValid()) {
                 toast.error('Authentication required. Using demo data.', {
