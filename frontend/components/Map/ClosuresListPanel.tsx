@@ -1,6 +1,6 @@
 "use client"
 import React from 'react';
-import { Calendar, Clock, MapPin, User, AlertCircle, Zap, Building2, Navigation, Edit3, Trash2, Target, Route as RouteIcon, TriangleAlert } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, AlertCircle, Zap, Building2, Navigation, Edit3, Trash2, Target, Route as RouteIcon, TriangleAlert, Search } from 'lucide-react';
 import { format, isAfter, isBefore, formatDistanceToNow } from 'date-fns';
 import { useClosures } from '@/context/ClosuresContext';
 import { Closure } from '@/services/api';
@@ -24,7 +24,7 @@ interface ClosuresListPanelProps {
 
 const ClosuresListPanel: React.FC<ClosuresListPanelProps> = ({ isOpen, onClose, onEditClosure }) => {
     const { state, selectClosure, startEditingClosure, canEditClosure, deleteClosure } = useClosures();
-    const { closures, selectedClosure, loading, isAuthenticated, user } = state;
+    const { closures, selectedClosure, loading, isAuthenticated, user, bboxTooLarge } = state;
     const isMobile = useIsMobile();
 
     const getClosureStatus = (closure: Closure): 'active' | 'upcoming' | 'expired' => {
@@ -211,17 +211,31 @@ const ClosuresListPanel: React.FC<ClosuresListPanelProps> = ({ isOpen, onClose, 
                         ))}
                     </div>
                 ) : closures.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
-                        <div className="p-4 bg-muted rounded-full">
-                            <AlertCircle className="w-8 h-8 text-muted-foreground" />
+                    bboxTooLarge ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+                            <div className="p-4 bg-muted rounded-full">
+                                <Search className="w-8 h-8 text-muted-foreground" />
+                            </div>
+                            <div className="space-y-1">
+                                <p className="font-bold text-muted-foreground">Zoom in to explore</p>
+                                <p className="text-xs text-muted-foreground/60 max-w-[180px]">
+                                    Zoom in to see closures in this area.
+                                </p>
+                            </div>
                         </div>
-                        <div className="space-y-1">
-                            <p className="font-bold text-muted-foreground">Clear Skies</p>
-                            <p className="text-xs text-muted-foreground/60 max-w-[180px]">
-                                No road closures reported in this area.
-                            </p>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+                            <div className="p-4 bg-muted rounded-full">
+                                <AlertCircle className="w-8 h-8 text-muted-foreground" />
+                            </div>
+                            <div className="space-y-1">
+                                <p className="font-bold text-muted-foreground">Clear Skies</p>
+                                <p className="text-xs text-muted-foreground/60 max-w-[180px]">
+                                    No road closures reported in this area.
+                                </p>
+                            </div>
                         </div>
-                    </div>
+                    )
                 ) : (
                     <div className="space-y-1.5 pb-8">
                         {closures.map((closure, index) => {

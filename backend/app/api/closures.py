@@ -2,7 +2,7 @@
 API endpoints for closure management.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Path, Response
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import math
@@ -196,6 +196,103 @@ async def query_closures(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while querying closures. Please try a smaller bounding box or contact support."
         )
+
+
+@router.get(
+    "/tiles/{z}/{x}/{y}.mvt",
+    summary="Closure vector tile (MVT)",
+    description=(
+        "Return closures intersecting tile (z, x, y) as a Mapbox Vector Tile. "
+        "Used by the map for zoom-independent rendering; supports the same "
+        "status/type/mode/temporal filters as GET /closures. Unlike the bbox "
+        "query, there is no area limit — the tile bounds the extent."
+    ),
+    response_class=Response,
+    responses={200: {"content": {"application/x-protobuf": {}}}},
+)
+async def get_closures_tile(
+    z: int = Path(..., ge=0, le=24, description="Tile zoom level"),
+    x: int = Path(..., ge=0, description="Tile column"),
+    y: int = Path(..., ge=0, description="Tile row"),
+    valid_only: bool = Query(True, description="Return only currently valid closures"),
+    closure_type: Optional[ClosureType] = Query(
+        None, description="Filter by closure type"
+    ),
+    transport_mode: Optional[TransportMode] = Query(
+        None, description="Filter by transport mode affected"
+    ),
+    is_bidirectional: Optional[bool] = Query(
+        None, description="Filter by direction"
+    ),
+    start_time: Optional[str] = Query(
+        None, description="Filter closures starting after this time (ISO 8601)"
+    ),
+    end_time: Optional[str] = Query(
+        None, description="Filter closures ending before this time (ISO 8601)"
+    ),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    Serve a single MVT tile of closures for the map layer.
+
+    Filters mirror `query_closures` so map tiles and the GeoJSON list endpoint
+    stay consistent. The response is a protobuf; an empty tile is returned with
+    HTTP 204 (no content) so the client simply renders nothing there.
+    """
+    start_datetime = None
+    end_datetime = None
+
+    if start_time:
+        try:
+            from datetime import datetime
+
+            start_datetime = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid start_time format. Use ISO 8601 format.",
+            )
+
+    if end_time:
+        try:
+            from datetime import datetime
+
+            end_datetime = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid end_time format. Use ISO 8601 format.",
+            )
+
+    service = ClosureService(db)
+
+    try:
+        tile = service.get_closures_tile(
+            z=z,
+            x=x,
+            y=y,
+            valid_only=valid_only,
+            closure_type=closure_type.value if closure_type else None,
+            transport_mode=transport_mode.value if transport_mode else None,
+            is_bidirectional=is_bidirectional,
+            start_time=start_datetime,
+            end_time=end_datetime,
+        )
+    except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error rendering closure tile {z}/{x}/{y}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while rendering the map tile.",
+        )
+
+    if not tile:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    return Response(content=tile, media_type="application/x-protobuf")
 
     # Convert closures to response format with geometry
     closure_dicts = service.get_closures_with_geometry(closures, validate_openlr=validate_openlr)

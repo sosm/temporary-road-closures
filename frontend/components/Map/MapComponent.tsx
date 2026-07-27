@@ -4,8 +4,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+// Side-effect import: patches the global L with L.vectorGrid.* for MVT rendering.
+// Must come after `leaflet` so it augments the same L instance.
+import 'leaflet.vectorgrid';
 import { useClosures } from '@/context/ClosuresContext';
-import { Closure, BoundingBox, getDirectionArrowFromCoords } from '@/services/api';
+import { Closure, BoundingBox, getDirectionArrowFromCoords, closuresApi, API_BASE_URL } from '@/services/api';
 import { valhallaAPI } from '@/services/valhallaApi';
 import { toast } from 'sonner';
 
@@ -214,19 +217,21 @@ const MapEventHandler: React.FC<{
 }> = ({ onMapClick, isSelecting, selectedPoints = [], onRouteCalculated, geometryType = 'LineString', mapCenter }) => {
     const map = useMap();
     const { state, fetchClosures, selectClosure } = useClosures();
-    const { closures, selectedClosure } = state;
-    const closureLayersRef = useRef<L.LayerGroup>(new L.LayerGroup());
-    const closureLayersByIdRef = useRef<Map<number, L.Layer>>(new Map());
+    const { selectedClosure } = state;
+    // MVT vector-tile layer for closures, plus a group for the selected
+    // closure's direction arrows (drawn from full geometry, not per-tile).
+    const vectorGridRef = useRef<L.Layer | null>(null);
+    const selectionArrowsRef = useRef<L.LayerGroup>(new L.LayerGroup());
+    const previousSelectedIdRef = useRef<number | null>(null);
     const selectionLayersRef = useRef<L.LayerGroup>(new L.LayerGroup());
     const routeLayersRef = useRef<L.LayerGroup>(new L.LayerGroup());
+    // Track the closure popup so 'popupclose' can tell it apart from others.
+    const closurePopupRef = useRef<L.Popup | null>(null);
+    // Set by the grid click handler so the map click knows a feature was hit.
+    const featureClickedRef = useRef(false);
 
-    // Tracks the current selection without being a dependency of the layer-
-    // rebuild effect below, so selecting a closure doesn't itself retrigger
-    // a rebuild (which would destroy the popup the selection just opened).
-    const selectedClosureRef = useRef(selectedClosure);
-    useEffect(() => {
-        selectedClosureRef.current = selectedClosure;
-    }, [selectedClosure]);
+    // Whether MVT tiles are currently being fetched (drives a small spinner).
+    const [tilesLoading, setTilesLoading] = useState(false);
 
     const [routingState, setRoutingState] = useState<{
         isRouting: boolean;
@@ -345,6 +350,16 @@ const MapEventHandler: React.FC<{
                 }
 
                 onMapClick(e.latlng);
+                return;
+            }
+
+            // Empty-map click (no feature hit) deselects the current closure.
+            if (!isSelecting) {
+                if (featureClickedRef.current) {
+                    featureClickedRef.current = false; // consume the grid-click flag
+                } else if (selectedClosure) {
+                    selectClosure(null);
+                }
             }
         },
         moveend: () => {
@@ -468,105 +483,123 @@ const MapEventHandler: React.FC<{
         };
     }, [selectedPoints, routingState.hasRoute, routingState.isRouting, map, geometryType]);
 
-    // Update closures on map
+    // Renders closures via server-driven MVT tiles; fixes zoom-out bbox errors.
     useEffect(() => {
-        const layerGroup = closureLayersRef.current;
-        const layersById = closureLayersByIdRef.current;
-        layerGroup.clearLayers();
-        layersById.clear();
+        const tileUrl = `${API_BASE_URL}/api/v1/closures/tiles/{z}/{x}/{y}.mvt`;
 
-        closures.forEach((closure) => {
-            const { points, isValid } = extractCoordinates(closure);
+        // Style features from the thin properties encoded in the tile
+        // (status/type/direction). Points render as small circle markers,
+        // lines as coloured strokes — mirroring getClosureColor().
+        const styleFor = (props: any): L.PathOptions => {
+            const color = getClosureColorFromStatus(props?.status);
+            const { weight, radius } = sizeForZoom(map.getZoom()); // scale with zoom
+            // `radius` styles point features in VectorGrid but is not on
+            // PathOptions' type, hence the cast.
+            return { color, weight, opacity: 0.8, fill: true, fillColor: color, fillOpacity: 0.9, radius } as L.PathOptions;
+        };
 
-            if (!isValid || points.length === 0) {
-                console.warn('Skipping closure with invalid coordinates:', closure.id);
+        const grid = (L as any).vectorGrid.protobuf(tileUrl, {
+            interactive: true,
+            // Required so setFeatureStyle/resetFeatureStyle can target features.
+            getFeatureId: (f: any) => f.properties.id,
+            vectorTileLayerStyles: {
+                // Layer name must match the ST_AsMVT layer name ('closures').
+                closures: (props: any) => styleFor(props),
+            },
+            maxNativeZoom: 20,
+        }) as L.Layer;
+
+        vectorGridRef.current = grid;
+
+        // Show a spinner while tiles are in flight during pan/zoom.
+        const onLoading = () => setTilesLoading(true);
+        const onLoad = () => setTilesLoading(false);
+        grid.on('loading', onLoading);
+        grid.on('load', onLoad);
+
+        // Click a tiled feature -> fetch full metadata by id, select it, and
+        // open the rich popup at the click point. Tile properties are thin, so
+        // the popup/arrows need the full closure from GET /closures/{id}.
+        grid.on('click', async (e: any) => {
+            const id: number | undefined = e?.layer?.properties?.id;
+            if (id == null) return;
+            featureClickedRef.current = true; // tell the map click a feature was hit
+            const latlng = e.latlng; // capture before await; Leaflet may recycle e
+            let closure: Closure;
+            try {
+                closure = await closuresApi.getClosure(id);
+            } catch (err) {
+                // Fetch failed (e.g. 404) — don't select or open a popup.
+                console.error('Failed to load closure for popup:', id, err);
+                toast.error('Could not load closure details.');
                 return;
             }
-
-            let layer: L.Layer | null = null;
-            const closureColor = getClosureColor(closure);
-
-            if (closure.geometry.type === 'Point') {
-                const [lat, lng] = points[0];
-
-                const icon = L.divIcon({
-                    className: 'custom-closure-icon',
-                    html: `
-                        <div class="closure-marker ${closure.status === 'active' ? 'active' : 'inactive'}">
-                            <div class="closure-marker-inner">⚠</div>
-                        </div>
-                    `,
-                    iconSize: [30, 30],
-                    iconAnchor: [15, 15],
-                });
-
-                layer = L.marker([lat, lng], { icon })
-                    .bindPopup(createClosurePopup(closure));
-
-            } else if (closure.geometry.type === 'LineString') {
-                layer = L.polyline(points, {
-                    color: closureColor,
-                    weight: 6,
-                    opacity: 0.8,
-                }).bindPopup(createClosurePopup(closure));
-
-                const isBidirectional = closure.is_bidirectional || false;
-                const arrows = createDirectionArrows(points, isBidirectional, closureColor);
-                arrows.forEach(arrow => layerGroup.addLayer(arrow));
-            }
-
-            if (layer) {
-                layer.on('click', () => {
-                    selectClosure(closure);
-                });
-
-                layersById.set(closure.id, layer);
-                layerGroup.addLayer(layer);
-            }
+            selectClosure(closure);
+            const popup = L.popup({ closeButton: true })
+                .setLatLng(latlng)
+                .setContent(createClosurePopup(closure))
+                .openOn(map);
+            closurePopupRef.current = popup; // track for popupclose deselect
         });
 
-        layerGroup.addTo(map);
-
-        // The closure data driving this effect can change (e.g. a bbox
-        // refetch after panning to a selection) independently of the user
-        // selecting anything. If a closure is currently selected, restore
-        // its popup on the freshly-rebuilt layer rather than leaving it
-        // closed.
-        const currentSelection = selectedClosureRef.current;
-        if (currentSelection) {
-            const selectedLayer = layersById.get(currentSelection.id);
-            if (selectedLayer instanceof L.Marker || selectedLayer instanceof L.Polyline) {
-                selectedLayer.openPopup();
+        // Closing the closure popup via its X deselects — unless another popup
+        // is already opening (only reset when the closed one is ours).
+        const onPopupClose = (e: L.PopupEvent) => {
+            if (e.popup === closurePopupRef.current) {
+                closurePopupRef.current = null;
+                selectClosure(null);
             }
-        }
+        };
+        map.on('popupclose', onPopupClose);
+
+        grid.addTo(map);
 
         return () => {
-            layerGroup.clearLayers();
-            layersById.clear();
+            grid.off('loading', onLoading);
+            grid.off('load', onLoad);
+            map.off('popupclose', onPopupClose);
+            map.removeLayer(grid);
+            vectorGridRef.current = null;
         };
-    }, [closures, map, selectClosure]);
+    }, [map, selectClosure]);
 
-    // Highlight the selected closure without rebuilding the layer set -
-    // rebuilding on every selection (e.g. on marker click, which also opens
-    // a popup) destroys the just-created popup before it can be seen.
+    // Highlight selection via setFeatureStyle; arrows only for selected LineString (MVT clips geometry per-tile).
     useEffect(() => {
-        closureLayersByIdRef.current.forEach((layer, id) => {
-            const isSelected = selectedClosure?.id === id;
+        const grid: any = vectorGridRef.current;
+        const arrowGroup = selectionArrowsRef.current;
+        arrowGroup.clearLayers();
 
-            if (layer instanceof L.Marker) {
-                layer.setZIndexOffset(isSelected ? 1000 : 0);
-            } else if (layer instanceof L.Polyline) {
-                const closure = closures.find((c) => c.id === id);
-                const baseColor = closure ? getClosureColor(closure) : '#6b7280';
+        // Reset the previous selection's style, then highlight the new one.
+        const prevId = previousSelectedIdRef.current;
+        if (grid && prevId != null && prevId !== selectedClosure?.id) {
+            try { grid.resetFeatureStyle(prevId); } catch { /* feature not in view */ }
+        }
 
-                layer.setStyle(
-                    isSelected
-                        ? { color: '#3b82f6', weight: 8, opacity: 1 }
-                        : { color: baseColor, weight: 6, opacity: 0.8 }
+        if (grid && selectedClosure) {
+            const { weight, radius } = sizeForZoom(map.getZoom()); // scale with zoom
+            try {
+                grid.setFeatureStyle(selectedClosure.id, {
+                    color: '#3b82f6', weight: weight + 2, opacity: 1,
+                    fill: true, fillColor: '#3b82f6', fillOpacity: 1, radius: radius + 2,
+                } as L.PathOptions);
+            } catch { /* feature not currently in a loaded tile */ }
+        }
+        previousSelectedIdRef.current = selectedClosure?.id ?? null;
+
+        // Direction arrows for the selected LineString.
+        if (selectedClosure && selectedClosure.geometry.type === 'LineString') {
+            const { points, isValid } = extractCoordinates(selectedClosure);
+            if (isValid && points.length > 0) {
+                const arrows = createDirectionArrows(
+                    points,
+                    selectedClosure.is_bidirectional || false,
+                    '#3b82f6',
                 );
+                arrows.forEach((arrow) => arrowGroup.addLayer(arrow));
             }
-        });
-    }, [selectedClosure, closures]);
+        }
+        arrowGroup.addTo(map);
+    }, [selectedClosure, map]);
 
     // Focus on selected closure
     useEffect(() => {
@@ -590,6 +623,13 @@ const MapEventHandler: React.FC<{
 
     return (
         <>
+            {/* Small tile-loading spinner (bottom-right corner) */}
+            {tilesLoading && (
+                <div className="absolute bottom-4 right-4 z-30 bg-white/90 rounded-full shadow-md p-1.5">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                </div>
+            )}
+
             {/* Routing Status Indicators - Only for LineString */}
             {geometryType === 'LineString' && (
                 <>
@@ -632,9 +672,15 @@ const MapEventHandler: React.FC<{
     );
 };
 
+// Ramp line/marker size with zoom: thinner when far out, thicker when close in.
+function sizeForZoom(zoom: number): { weight: number; radius: number } {
+    const t = Math.max(0, Math.min(1, (zoom - 10) / 8)); // clamp z10..z18 -> 0..1
+    return { weight: 3 + t * 5, radius: 3 + t * 5 }; // 3..8
+}
+
 // Helper functions
-function getClosureColor(closure: Closure): string {
-    switch (closure.status) {
+function getClosureColorFromStatus(status: string | undefined): string {
+    switch (status) {
         case 'active':
             return '#ef4444'; // red
         case 'inactive':

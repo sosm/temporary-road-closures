@@ -3,8 +3,8 @@ Enhanced business logic for closure management with full OpenLR integration.
 """
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
-from geoalchemy2.functions import ST_AsGeoJSON, ST_Intersects
+from sqlalchemy import func, and_, or_, text
+from geoalchemy2.functions import ST_AsGeoJSON, ST_GeomFromGeoJSON, ST_Intersects
 from typing import List, Optional, Dict, Any, Tuple
 import json
 from datetime import datetime, timezone
@@ -312,6 +312,109 @@ class ClosureService:
         closures = query.offset(skip).limit(params.size).all()
 
         return closures, total
+
+    def get_closures_tile(
+        self,
+        z: int,
+        x: int,
+        y: int,
+        valid_only: bool = True,
+        closure_type: Optional[str] = None,
+        transport_mode: Optional[str] = None,
+        is_bidirectional: Optional[bool] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> bytes:
+        """
+        Render closures intersecting tile (z, x, y) as a Mapbox Vector Tile.
+
+        The tile extent is fixed by z/x/y, so there is no bbox-area limit here
+        (unlike ``query_closures``) — this is what lets the map render at any
+        zoom level. The spatial prefilter is kept in SRID 4326 so the GIST
+        index on ``closures.geometry`` (idx_closures_geometry) is used; only
+        the geometry passed into ST_AsMVTGeom is transformed to 3857.
+
+        Filters mirror ``query_closures`` so map tiles and the GeoJSON list
+        endpoint honour the same status/type/mode/temporal semantics.
+
+        Args:
+            z, x, y: Tile coordinates.
+            valid_only: Only currently-active closures (status + time window).
+            closure_type: Filter by closure type value.
+            transport_mode: Filter by transport mode value.
+            is_bidirectional: Filter by direction.
+            start_time: Only closures starting at/after this time.
+            end_time: Only closures ending at/before this time (or open-ended).
+
+        Returns:
+            bytes: MVT protobuf payload (empty bytes for an empty tile).
+        """
+        params: Dict[str, Any] = {"z": z, "x": x, "y": y}
+        filters = []
+
+        if valid_only:
+            params["now"] = datetime.now(timezone.utc)
+            filters.append(
+                "c.status = 'active' "
+                "AND c.start_time <= :now "
+                "AND (c.end_time IS NULL OR c.end_time > :now)"
+            )
+
+        if closure_type is not None:
+            params["closure_type"] = closure_type
+            filters.append("c.closure_type = :closure_type")
+
+        if transport_mode is not None:
+            params["transport_mode"] = transport_mode
+            filters.append("c.transport_mode = :transport_mode")
+
+        if is_bidirectional is not None:
+            params["is_bidirectional"] = is_bidirectional
+            filters.append("c.is_bidirectional = :is_bidirectional")
+
+        if start_time is not None:
+            params["start_time"] = start_time
+            filters.append("c.start_time >= :start_time")
+
+        if end_time is not None:
+            params["end_time"] = end_time
+            filters.append("(c.end_time IS NULL OR c.end_time <= :end_time)")
+
+        filter_sql = ("AND " + " AND ".join(filters)) if filters else ""
+
+        # Single round-trip: prefilter with the GIST-indexed && in 4326, then
+        # clip/transform into tile space and encode with ST_AsMVT.
+        sql = text(
+            f"""
+            WITH bounds AS (
+                SELECT ST_TileEnvelope(:z, :x, :y) AS geom_3857,
+                       ST_Transform(ST_TileEnvelope(:z, :x, :y), 4326) AS geom_4326
+            ),
+            mvt AS (
+                SELECT
+                    c.id,
+                    c.closure_type,
+                    c.status,
+                    c.transport_mode,
+                    c.is_bidirectional,
+                    ST_AsMVTGeom(
+                        ST_Transform(c.geometry, 3857),
+                        bounds.geom_3857,
+                        4096, 64, true
+                    ) AS geom
+                FROM closures c, bounds
+                WHERE c.geometry && bounds.geom_4326
+                    AND ST_Intersects(c.geometry, bounds.geom_4326)
+                    {filter_sql}
+            )
+            SELECT ST_AsMVT(mvt.*, 'closures') AS tile
+            FROM mvt
+            WHERE geom IS NOT NULL
+            """
+        )
+
+        result = self.db.execute(sql, params).scalar()
+        return bytes(result) if result is not None else b""
 
     def get_closure_with_geometry(self, closure_id: int) -> Dict[str, Any]:
         """
