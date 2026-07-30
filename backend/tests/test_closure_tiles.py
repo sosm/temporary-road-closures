@@ -12,8 +12,13 @@ endpoint stay consistent.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from app.core.database import get_db
+from app.main import app
 from app.services.closure_service import ClosureService
 
 
@@ -89,7 +94,9 @@ class TestFilterCarryOver:
 
     def test_closure_type_filter(self):
         svc = _svc_with_mock_db()
-        svc.get_closures_tile(z=0, x=0, y=0, valid_only=False, closure_type="construction")
+        svc.get_closures_tile(
+            z=0, x=0, y=0, valid_only=False, closure_type="construction"
+        )
         sql, params = _captured(svc)
         assert "c.closure_type = :closure_type" in sql
         assert params["closure_type"] == "construction"
@@ -127,3 +134,49 @@ class TestFilterCarryOver:
         svc.get_closures_tile(z=3, x=4, y=5, valid_only=False)
         _sql, params = _captured(svc)
         assert set(params.keys()) == {"z", "x", "y"}
+
+
+class TestTileCacheHeaders:
+    """Cache-Control must be present on both the 200 and 204 tile paths.
+
+    HTTP-level tests over the ASGI app; service render is mocked, so no DB is touched.
+    Asserts the literal value, not the constant, so a stray edit to the constant is caught.
+    """
+
+    _URL = "/api/v1/closures/tiles/10/262/380.mvt"
+    _EXPECTED = "public, max-age=300"
+
+    async def _get_tile(self):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get(self._URL)
+
+    @pytest.mark.asyncio
+    async def test_cache_control_on_200(self):
+        app.dependency_overrides[get_db] = lambda: MagicMock()
+        try:
+            with patch(
+                "app.api.closures.ClosureService.get_closures_tile",
+                return_value=b"\x1a\x0b",  # non-empty tile -> 200
+            ):
+                resp = await self._get_tile()
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+        assert resp.status_code == 200, resp.text
+        assert resp.headers["cache-control"] == self._EXPECTED
+
+    @pytest.mark.asyncio
+    async def test_cache_control_on_204(self):
+        app.dependency_overrides[get_db] = lambda: MagicMock()
+        try:
+            with patch(
+                "app.api.closures.ClosureService.get_closures_tile",
+                return_value=b"",  # empty tile -> 204
+            ):
+                resp = await self._get_tile()
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+        assert resp.status_code == 204
+        assert resp.headers["cache-control"] == self._EXPECTED
