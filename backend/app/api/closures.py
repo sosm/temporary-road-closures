@@ -31,6 +31,12 @@ from app.core.exceptions import NotFoundException, ValidationException
 router = APIRouter()
 
 
+# Short client/proxy cache for map tiles. Closures are user-submitted and
+# low-frequency; a 5-minute TTL absorbs pan/zoom re-requests without making a
+# newly-added closure invisible for long. HTTP headers only (see PR discussion).
+TILE_CACHE_CONTROL = "public, max-age=300"
+
+
 @router.post(
     "/",
     response_model=ClosureResponse,
@@ -290,9 +296,16 @@ async def get_closures_tile(
         )
 
     if not tile:
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        return Response(
+            status_code=status.HTTP_204_NO_CONTENT,
+            headers={"Cache-Control": TILE_CACHE_CONTROL},
+        )
 
-    return Response(content=tile, media_type="application/x-protobuf")
+    return Response(
+        content=tile,
+        media_type="application/x-protobuf",
+        headers={"Cache-Control": TILE_CACHE_CONTROL},
+    )
 
     # Convert closures to response format with geometry
     closure_dicts = service.get_closures_with_geometry(closures, validate_openlr=validate_openlr)
