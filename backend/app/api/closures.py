@@ -203,6 +203,19 @@ async def query_closures(
             detail="An error occurred while querying closures. Please try a smaller bounding box or contact support."
         )
 
+    # Convert closures to response format with geometry
+    closure_dicts = service.get_closures_with_geometry(closures, validate_openlr=validate_openlr)
+    closure_responses = [
+        ClosureResponse(**closure_dict) for closure_dict in closure_dicts
+    ]
+
+    # Calculate pagination metadata
+    pages = math.ceil(total / size) if total > 0 else 1
+
+    return ClosureListResponse(
+        items=closure_responses, total=total, page=page, size=size, pages=pages
+    )
+
 
 @router.get(
     "/tiles/{z}/{x}/{y}.mvt",
@@ -305,19 +318,6 @@ async def get_closures_tile(
         content=tile,
         media_type="application/x-protobuf",
         headers={"Cache-Control": TILE_CACHE_CONTROL},
-    )
-
-    # Convert closures to response format with geometry
-    closure_dicts = service.get_closures_with_geometry(closures, validate_openlr=validate_openlr)
-    closure_responses = [
-        ClosureResponse(**closure_dict) for closure_dict in closure_dicts
-    ]
-
-    # Calculate pagination metadata
-    pages = math.ceil(total / size) if total > 0 else 1
-
-    return ClosureListResponse(
-        items=closure_responses, total=total, page=page, size=size, pages=pages
     )
 
 
