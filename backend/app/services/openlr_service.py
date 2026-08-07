@@ -1,27 +1,33 @@
 """
 OpenLR (Open Location Referencing) service for encoding and decoding location references.
 
-This service provides functionality to:
-- Encode GeoJSON LineString geometries to OpenLR format
-- Decode OpenLR codes back to geographic coordinates
-- Validate OpenLR codes and geometries
-- Handle different OpenLR formats (binary, base64, XML)
+Encoding is spec-compliant: raw geometry is map-matched against the road network
+via Valhalla's ``trace_attributes`` to obtain the Functional Road Class, Form of
+Way and bearing that the OpenLR spec requires, then serialised with the
+``openlr`` package.
+
+Because map matching depends on an external service, encoding is best-effort:
+if Valhalla is unavailable or the geometry cannot be matched, ``encode_geometry``
+returns ``None`` and the caller stores no code rather than failing.
 """
 
-import base64
-import json
-import struct
+import asyncio
 import logging
-from typing import Dict, Any, List, Optional, Tuple, Union
-from dataclasses import dataclass
-from enum import Enum
 import math
-from geojson import LineString
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
+import anyio
+import openlr
 import requests
 
 from app.config import settings
-from app.core.exceptions import OpenLRException, GeospatialException
-
+from app.core.exceptions import GeospatialException, OpenLRException
+from app.services.openlr_translation import build_line_location_reference
+from app.services.valhalla_trace_service import (
+    ValhallaTraceService,
+    create_valhalla_trace_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,136 +40,129 @@ class OpenLRFormat(str, Enum):
     XML = "xml"
 
 
-class FunctionalRoadClass(int, Enum):
-    """Functional Road Class according to OpenLR specification."""
-
-    MAIN_ROAD = 0
-    FIRST_CLASS_ROAD = 1
-    SECOND_CLASS_ROAD = 2
-    THIRD_CLASS_ROAD = 3
-    FOURTH_CLASS_ROAD = 4
-    FIFTH_CLASS_ROAD = 5
-    SIXTH_CLASS_ROAD = 6
-    OTHER_ROAD = 7
-
-
-class FormOfWay(int, Enum):
-    """Form of Way according to OpenLR specification."""
-
-    UNDEFINED = 0
-    MOTORWAY = 1
-    MULTIPLE_CARRIAGEWAY = 2
-    SINGLE_CARRIAGEWAY = 3
-    ROUNDABOUT = 4
-    TRAFFICSQUARE = 5
-    SLIPROAD = 6
-    OTHER = 7
-
-
-@dataclass
-class OpenLRPoint:
-    """Represents a point in OpenLR encoding."""
-
-    longitude: float
-    latitude: float
-    functional_road_class: FunctionalRoadClass
-    form_of_way: FormOfWay
-    bearing: int  # 0-360 degrees
-    distance_to_next: Optional[int] = None  # meters
-
-    def to_coordinates(self) -> List[float]:
-        """Convert to [longitude, latitude] format."""
-        return [self.longitude, self.latitude]
-
-
-@dataclass
-class OpenLRLocationReference:
-    """Complete OpenLR location reference."""
-
-    points: List[OpenLRPoint]
-    positive_offset: Optional[int] = None  # meters
-    negative_offset: Optional[int] = None  # meters
-
-    def to_geojson(self) -> Dict[str, Any]:
-        """Convert to GeoJSON LineString."""
-        coordinates = [point.to_coordinates() for point in self.points]
-        return {"type": "LineString", "coordinates": coordinates}
-
-
 class OpenLRService:
     """
     Service for OpenLR encoding and decoding operations.
     """
 
-    def __init__(self):
-        """Initialize OpenLR service with configuration."""
+    def __init__(self, trace_service: Optional[ValhallaTraceService] = None):
+        """Initialize OpenLR service with configuration.
+
+        Args:
+            trace_service: Valhalla map-matching client. Defaults to one built
+                from settings; injectable so tests can supply a stub.
+        """
         self.enabled = settings.OPENLR_ENABLED
         self.format = OpenLRFormat.BASE64  # Default format
         self.map_version = getattr(settings, "OPENLR_MAP_VERSION", "latest")
+        self.use_valhalla = getattr(settings, "OPENLR_USE_VALHALLA", True)
+        self.trace_service = trace_service or create_valhalla_trace_service()
 
-        # OpenLR constants (adjusted for better compatibility)
-        self.COORDINATE_FACTOR = 100000  # For coordinate precision
-        self.BEARING_SECTORS = 32  # 32 sectors of 11.25 degrees each
-        self.DISTANCE_INTERVALS = 256  # 256 distance intervals
+        logger.info(
+            "OpenLR Service initialized - Enabled: %s, Valhalla matching: %s",
+            self.enabled,
+            self.use_valhalla,
+        )
 
-        logger.info(f"OpenLR Service initialized - Enabled: {self.enabled}")
+    def _map_match(self, coordinates: List[List[float]]):
+        """Bridge to the async trace service from this sync class.
+
+        Uses anyio.from_thread when called via run_in_threadpool; falls back
+        to asyncio.run for plain sync callers (scripts, tests, regeneration).
+        If a loop is already running in this thread, map-matching is skipped
+        and returns None rather than risking a deadlock.
+        """
+        coro_factory = lambda: self.trace_service.trace_attributes(coordinates)
+        try:
+            return anyio.from_thread.run(coro_factory)
+        except RuntimeError:
+            # Not running inside a worker thread spawned from an event loop.
+            pass
+
+        try:
+            return asyncio.run(coro_factory())
+        except RuntimeError as exc:
+            # A loop is already running in *this* thread; encoding synchronously
+            # here would deadlock, so degrade rather than block.
+            logger.warning(
+                "Cannot map-match from a running event loop thread: %s. "
+                "Call create_closure via run_in_threadpool.",
+                exc,
+            )
+            return None
 
     def encode_geometry(self, geometry: Dict[str, Any]) -> Optional[str]:
         """
-        Encode a GeoJSON geometry to OpenLR format.
+        Encode a GeoJSON geometry to a spec-compliant OpenLR code.
+
+        The geometry is map-matched against the road network to derive the
+        Functional Road Class, Form of Way and bearing that OpenLR requires;
+        those cannot be inferred from coordinates alone.
 
         Args:
             geometry: GeoJSON LineString geometry
 
         Returns:
-            str: OpenLR encoded string (base64 by default)
+            str: base64 OpenLR code, or ``None`` if the location could not be
+            map-matched (Valhalla down, geometry off-network, or matching
+            disabled). Encoding is best-effort by design.
 
         Raises:
-            OpenLRException: If encoding fails
-            GeospatialException: If geometry is invalid
+            GeospatialException: If the geometry itself is invalid
         """
         if not self.enabled:
             logger.warning("OpenLR encoding skipped - service disabled")
             return None
 
+        # Validate first: a malformed geometry is the caller's error and is
+        # worth raising, unlike a map-match miss which is merely unfortunate.
+        self._validate_geometry(geometry)
+
+        coordinates = geometry.get("coordinates", [])
+        if len(coordinates) < 2:
+            raise GeospatialException("LineString must have at least 2 coordinates")
+
+        if not self.use_valhalla:
+            logger.warning(
+                "OpenLR encoding skipped - Valhalla map matching is disabled"
+            )
+            return None
+
+        trace = self._map_match(coordinates)
+        if trace is None:
+            logger.warning(
+                "OpenLR encoding skipped - map matching returned no result for "
+                "a %d-point geometry",
+                len(coordinates),
+            )
+            return None
+
         try:
-            # Validate geometry
-            self._validate_geometry(geometry)
-
-            # Extract coordinates
-            coordinates = geometry.get("coordinates", [])
-            if len(coordinates) < 2:
-                raise GeospatialException("LineString must have at least 2 coordinates")
-
-            # Simplified encoding for demonstration purposes
-            # In a real implementation, you would use a proper OpenLR library
-
-            # For now, create a simplified but valid OpenLR-like code
-            encoded_data = self._create_simple_encoding(coordinates)
-
-            # Convert to requested format
-            if self.format == OpenLRFormat.BASE64:
-                return base64.b64encode(encoded_data).decode("ascii")
-            elif self.format == OpenLRFormat.BINARY:
-                return encoded_data.hex()
-            else:
-                return self._encode_to_xml_simple(coordinates)
-
+            reference = build_line_location_reference(
+                coordinates,
+                trace.edges,
+                max_points=settings.OPENLR_MAX_POINTS,
+            )
+            return openlr.binary_encode(reference)
         except Exception as e:
-            logger.error(f"OpenLR encoding failed: {e}")
-            if isinstance(e, (OpenLRException, GeospatialException)):
-                raise
-            raise OpenLRException(f"Encoding failed: {str(e)}")
+            # Assembly/serialisation failures are logged and degraded rather
+            # than raised, so a closure still saves without a code.
+            logger.error("OpenLR encoding failed: %s", e)
+            return None
 
     def decode_openlr(self, openlr_code: str) -> Optional[Dict[str, Any]]:
         """
-        Decode an OpenLR code to GeoJSON geometry.
+        Decode an OpenLR code to its location reference points.
+
+        Note: returns LRP anchor points, not the closure's road geometry.
+        Reconstructing the road path requires a dereferencer this service
+        doesn't implement.
 
         Args:
-            openlr_code: OpenLR encoded string
+            openlr_code: OpenLR encoded string (base64)
 
         Returns:
-            dict: GeoJSON LineString geometry
+            dict: GeoJSON LineString of the LRP anchors
 
         Raises:
             OpenLRException: If decoding fails
@@ -172,23 +171,18 @@ class OpenLRService:
             return None
 
         try:
-            # Determine format and decode
-            if self._is_base64(openlr_code):
-                binary_data = base64.b64decode(openlr_code)
-                coordinates = self._decode_simple_encoding(binary_data)
-            elif self._is_hex(openlr_code):
-                binary_data = bytes.fromhex(openlr_code)
-                coordinates = self._decode_simple_encoding(binary_data)
-            elif openlr_code.startswith("<"):
-                coordinates = self._decode_from_xml_simple(openlr_code)
-            else:
-                raise OpenLRException("Unknown OpenLR format")
-
-            # Convert to GeoJSON
+            reference = openlr.binary_decode(openlr_code)
+            coordinates = [list(pair) for pair in openlr.get_lonlat_list(reference)]
             return {"type": "LineString", "coordinates": coordinates}
 
+        except NotImplementedError as e:
+            # Pre-rewrite codes used a custom 0x42 format, which the real
+            # decoder reports as an unsupported version. Call that out plainly
+            # so stale rows are easy to spot.
+            logger.error("OpenLR decoding failed - legacy or unsupported code: %s", e)
+            raise OpenLRException(f"Unsupported OpenLR code (legacy format?): {e}")
         except Exception as e:
-            logger.error(f"OpenLR decoding failed: {e}")
+            logger.error("OpenLR decoding failed: %s", e)
             if isinstance(e, OpenLRException):
                 raise
             raise OpenLRException(f"Decoding failed: {str(e)}")
@@ -207,17 +201,18 @@ class OpenLRService:
             return False
 
         try:
-            # Try to decode - if successful, it's valid
+            # Try to decode - if successful, it's valid. Legacy 0x42 codes fail
+            # here, which is the intended signal that they need regenerating.
             result = self.decode_openlr(openlr_code)
             return result is not None
-        except:
+        except Exception:
             return False
 
     def encode_osm_way(
         self, way_id: int, start_node: int = None, end_node: int = None
     ) -> Optional[str]:
         """
-        Encode an OSM way to OpenLR format.
+        Encode an OSM way to OpenLR format via the same map-matched path as closures.
 
         Args:
             way_id: OSM way ID
@@ -225,10 +220,10 @@ class OpenLRService:
             end_node: Optional end node ID
 
         Returns:
-            str: OpenLR encoded string
+            str: OpenLR encoded string, or None if map matching failed
 
         Raises:
-            OpenLRException: If encoding fails
+            OpenLRException: If fetching the way geometry fails
         """
         if not self.enabled:
             return None
@@ -237,7 +232,7 @@ class OpenLRService:
             # Fetch way geometry from OSM API
             geometry = self._fetch_osm_way_geometry(way_id, start_node, end_node)
 
-            # Encode the geometry
+            # Encode the geometry through the same map-matched path as closures.
             return self.encode_geometry(geometry)
 
         except Exception as e:
@@ -246,7 +241,11 @@ class OpenLRService:
 
     def test_encoding_roundtrip(self, geometry: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Test encoding/decoding roundtrip for validation.
+        Encode then decode a geometry and report how far the anchors moved.
+
+        Accuracy is measured **endpoint to endpoint**, because decoding yields
+        LRP anchors rather than the original vertex list (see ``decode_openlr``).
+        A whole-line comparison would be meaningless.
 
         Args:
             geometry: GeoJSON geometry to test
@@ -255,131 +254,32 @@ class OpenLRService:
             dict: Test results with original, encoded, and decoded data
         """
         try:
-            # Encode
             encoded = self.encode_geometry(geometry)
-
-            # Decode
             decoded = self.decode_openlr(encoded) if encoded else None
 
-            # Calculate accuracy
-            accuracy = (
-                self._calculate_geometry_accuracy(geometry, decoded) if decoded else 0.0
-            )
+            if not decoded:
+                return {
+                    "success": False,
+                    "original_geometry": geometry,
+                    "openlr_code": encoded,
+                    "decoded_geometry": None,
+                    "accuracy_meters": float("inf"),
+                    "valid": False,
+                }
+
+            accuracy = self._calculate_geometry_accuracy(geometry, decoded)
 
             return {
-                "success": decoded is not None,
+                "success": True,
                 "original_geometry": geometry,
                 "openlr_code": encoded,
                 "decoded_geometry": decoded,
                 "accuracy_meters": accuracy,
-                "valid": (
-                    accuracy < settings.OPENLR_ACCURACY_TOLERANCE if decoded else False
-                ),
+                "valid": accuracy < settings.OPENLR_ACCURACY_TOLERANCE,
             }
 
         except Exception as e:
             return {"success": False, "error": str(e), "original_geometry": geometry}
-
-    def _create_simple_encoding(self, coordinates: List[List[float]]) -> bytes:
-        """
-        Create a simplified but valid encoding for demonstration.
-        In production, use a proper OpenLR library like openlr-python.
-        """
-        data = bytearray()
-
-        # Simplified header (just a marker for our custom format)
-        data.append(0x42)  # Custom marker byte
-
-        # Number of points
-        data.append(len(coordinates))
-
-        # Encode each coordinate pair
-        for coord in coordinates:
-            lon, lat = coord
-
-            # Scale and pack coordinates (4 bytes each for precision)
-            lon_scaled = int((lon + 180) * 1000000) % (1 << 32)
-            lat_scaled = int((lat + 90) * 1000000) % (1 << 32)
-
-            data.extend(struct.pack(">I", lon_scaled))  # Big-endian unsigned int
-            data.extend(struct.pack(">I", lat_scaled))
-
-        return bytes(data)
-
-    def _decode_simple_encoding(self, binary_data: bytes) -> List[List[float]]:
-        """
-        Decode the simplified encoding back to coordinates.
-        """
-        if len(binary_data) < 2:
-            raise OpenLRException("Binary data too short")
-
-        data = bytearray(binary_data)
-
-        # Check header
-        if data[0] != 0x42:
-            raise OpenLRException("Invalid encoding format")
-
-        # Get number of points
-        num_points = data[1]
-        expected_length = 2 + (num_points * 8)  # Header + points * 8 bytes each
-
-        if len(data) != expected_length:
-            raise OpenLRException(
-                f"Invalid data length: expected {expected_length}, got {len(data)}"
-            )
-
-        coordinates = []
-        offset = 2
-
-        for i in range(num_points):
-            # Unpack coordinates
-            lon_scaled = struct.unpack(">I", data[offset : offset + 4])[0]
-            lat_scaled = struct.unpack(">I", data[offset + 4 : offset + 8])[0]
-
-            # Scale back to degrees
-            lon = (lon_scaled / 1000000.0) - 180
-            lat = (lat_scaled / 1000000.0) - 90
-
-            coordinates.append([lon, lat])
-            offset += 8
-
-        return coordinates
-
-    def _encode_to_xml_simple(self, coordinates: List[List[float]]) -> str:
-        """Encode coordinates to simplified XML format."""
-        xml_parts = ['<?xml version="1.0" encoding="UTF-8"?>']
-        xml_parts.append("<OpenLR>")
-        xml_parts.append("<LocationReference>")
-
-        for i, coord in enumerate(coordinates):
-            lon, lat = coord
-            xml_parts.append(f'  <Point id="{i}">')
-            xml_parts.append(f"    <Longitude>{lon}</Longitude>")
-            xml_parts.append(f"    <Latitude>{lat}</Latitude>")
-            xml_parts.append("  </Point>")
-
-        xml_parts.append("</LocationReference>")
-        xml_parts.append("</OpenLR>")
-
-        return "\n".join(xml_parts)
-
-    def _decode_from_xml_simple(self, xml_data: str) -> List[List[float]]:
-        """Decode XML data to coordinates."""
-        import xml.etree.ElementTree as ET
-
-        try:
-            root = ET.fromstring(xml_data)
-            coordinates = []
-
-            for point_elem in root.findall(".//Point"):
-                longitude = float(point_elem.find("Longitude").text)
-                latitude = float(point_elem.find("Latitude").text)
-                coordinates.append([longitude, latitude])
-
-            return coordinates
-
-        except ET.ParseError as e:
-            raise OpenLRException(f"Invalid XML format: {e}")
 
     def _validate_geometry(self, geometry: Dict[str, Any]) -> None:
         """Validate GeoJSON geometry for OpenLR encoding."""
@@ -415,7 +315,7 @@ class OpenLRService:
                     )
                     if distance < settings.OPENLR_MIN_DISTANCE:
                         logger.warning(
-                            f"Points {i} and {i+1} are closer than minimum distance ({distance}m < {settings.OPENLR_MIN_DISTANCE}m)"
+                            f"Points {i} and {i + 1} are closer than minimum distance ({distance}m < {settings.OPENLR_MIN_DISTANCE}m)"
                         )
 
             for coord in coordinates:
@@ -496,22 +396,26 @@ class OpenLRService:
     def _calculate_geometry_accuracy(
         self, original: Dict[str, Any], decoded: Dict[str, Any]
     ) -> float:
-        """Calculate accuracy between original and decoded geometries."""
+        """Worst endpoint displacement, in metres, between two geometries.
+
+        Compared endpoint-to-endpoint rather than vertex-by-vertex: decoding an
+        OpenLR code yields LRP anchors, so the two coordinate lists have
+        different lengths and no per-index correspondence. The endpoints are the
+        only points both representations are guaranteed to share.
+        """
         if not original or not decoded:
             return float("inf")
 
         orig_coords = original.get("coordinates", [])
         dec_coords = decoded.get("coordinates", [])
 
-        if len(orig_coords) != len(dec_coords):
+        if not orig_coords or not dec_coords:
             return float("inf")
 
-        total_distance = 0.0
-        for orig, dec in zip(orig_coords, dec_coords):
-            distance = self._calculate_haversine_distance(orig, dec)
-            total_distance += distance
+        start_error = self._calculate_haversine_distance(orig_coords[0], dec_coords[0])
+        end_error = self._calculate_haversine_distance(orig_coords[-1], dec_coords[-1])
 
-        return total_distance / len(orig_coords) if orig_coords else float("inf")
+        return max(start_error, end_error)
 
     def _calculate_haversine_distance(
         self, point1: List[float], point2: List[float]
@@ -533,45 +437,13 @@ class OpenLRService:
 
         return R * c
 
-    def _calculate_distance(self, point1: List[float], point2: List[float]) -> float:
-        """Calculate distance between two points in meters."""
-        R = 6371000  # Earth radius in meters
-
-        lat1, lon1 = math.radians(point1[1]), math.radians(point1[0])
-        lat2, lon2 = math.radians(point2[1]), math.radians(point2[0])
-
-        dlat = lat2 - lat1
-        dlon = lon2 - lon1
-
-        a = (
-            math.sin(dlat / 2) ** 2
-            + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
-        )
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-        return R * c
-
-    def _is_base64(self, s: str) -> bool:
-        """Check if string is valid base64."""
-        try:
-            base64.b64decode(s, validate=True)
-            return True
-        except:
-            return False
-
-    def _is_hex(self, s: str) -> bool:
-        """Check if string is valid hexadecimal."""
-        try:
-            bytes.fromhex(s)
-            return True
-        except:
-            return False
-
 
 # Factory function for creating OpenLR service
-def create_openlr_service() -> OpenLRService:
+def create_openlr_service(
+    trace_service: Optional[ValhallaTraceService] = None,
+) -> OpenLRService:
     """Create and configure OpenLR service."""
-    return OpenLRService()
+    return OpenLRService(trace_service=trace_service)
 
 
 # Utility functions for external use

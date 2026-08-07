@@ -3,6 +3,7 @@ API endpoints for OpenLR encoding, decoding, and validation operations.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
@@ -192,7 +193,9 @@ async def encode_geometry(
 
         if request.validate_roundtrip:
             # Use roundtrip test for full validation
-            result = openlr_service.test_encoding_roundtrip(geometry_dict)
+            result = await run_in_threadpool(
+                openlr_service.test_encoding_roundtrip, geometry_dict
+            )
 
             return OpenLRResponse(
                 success=result.get("success", False),
@@ -208,7 +211,9 @@ async def encode_geometry(
             )
         else:
             # Simple encoding without validation
-            openlr_code = openlr_service.encode_geometry(geometry_dict)
+            openlr_code = await run_in_threadpool(
+                openlr_service.encode_geometry, geometry_dict
+            )
 
             return OpenLRResponse(
                 success=openlr_code is not None,
@@ -311,8 +316,12 @@ async def encode_osm_way(
 
     try:
         openlr_service = create_openlr_service()
-        openlr_code = openlr_service.encode_osm_way(
-            request.way_id, request.start_node, request.end_node
+        # Fetches from Overpass and then map-matches; both are blocking I/O.
+        openlr_code = await run_in_threadpool(
+            openlr_service.encode_osm_way,
+            request.way_id,
+            request.start_node,
+            request.end_node,
         )
 
         # Also fetch geometry for response
@@ -502,7 +511,8 @@ async def regenerate_openlr_codes(
 
     try:
         service = ClosureService(db)
-        results = service.regenerate_openlr_codes(force=force)
+        # Bulk re-encoding map-matches every closure in turn; never on the loop.
+        results = await run_in_threadpool(service.regenerate_openlr_codes, force=force)
 
         return RegenerationResponse(**results)
 
