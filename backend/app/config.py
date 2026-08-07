@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     OPENLR_OSM_API_URL: str = "https://api.openstreetmap.org/api/0.6"
     OPENLR_TIMEOUT: int = 10
     OPENLR_VALIDATE_ROUNDTRIP: bool = True
+    # Map-match geometry via Valhalla to derive the FRC/FOW/bearing that the
+    # OpenLR spec requires. Turning this off disables code generation entirely:
+    # spec-compliant encoding is impossible without road-network attributes.
+    OPENLR_USE_VALHALLA: bool = True
     OPENLR_AUTO_SIMPLIFY: bool = True
     OPENLR_COORDINATE_PRECISION: int = 5
 
@@ -161,6 +165,7 @@ class Settings(BaseSettings):
             "min_distance": self.OPENLR_MIN_DISTANCE,
             "enable_caching": self.OPENLR_ENABLE_CACHING,
             "validate_roundtrip": self.OPENLR_VALIDATE_ROUNDTRIP,
+            "use_valhalla": self.OPENLR_USE_VALHALLA,
             "auto_simplify": self.OPENLR_AUTO_SIMPLIFY,
             "coordinate_precision": self.OPENLR_COORDINATE_PRECISION,
             "timeout": self.OPENLR_TIMEOUT,

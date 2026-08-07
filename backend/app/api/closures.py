@@ -3,6 +3,7 @@ API endpoints for closure management.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path, Response
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import math
@@ -64,7 +65,12 @@ async def create_closure(
     Returns the created closure with generated ID and OpenLR code.
     """
     service = ClosureService(db)
-    closure = service.create_closure(closure_data, current_user.id)
+    # OpenLR encoding map-matches against Valhalla, so this must not run on the
+    # event loop; run_in_threadpool also gives the encoder a worker thread it
+    # can bridge back to async from.
+    closure = await run_in_threadpool(
+        service.create_closure, closure_data, current_user.id
+    )
 
     # Get closure with geometry for response
     closure_dict = service.get_closure_with_geometry(closure.id)
@@ -389,7 +395,11 @@ async def update_closure(
     service = ClosureService(db)
 
     try:
-        closure = service.update_closure(closure_id, closure_data, current_user)
+        # Re-encoding on a geometry change map-matches against Valhalla; keep it
+        # off the event loop.
+        closure = await run_in_threadpool(
+            service.update_closure, closure_id, closure_data, current_user
+        )
         closure_dict = service.get_closure_with_geometry(closure.id)
         return ClosureResponse(**closure_dict)
     except NotFoundException:
@@ -551,7 +561,10 @@ async def update_closure_status(
     try:
         # Create update object with just status
         update_data = ClosureUpdate(status=new_status)
-        closure = service.update_closure(closure_id, update_data, current_user)
+        # Shares the update path with geometry edits, so it can encode too.
+        closure = await run_in_threadpool(
+            service.update_closure, closure_id, update_data, current_user
+        )
 
         closure_dict = service.get_closure_with_geometry(closure.id)
         return ClosureResponse(**closure_dict)

@@ -32,9 +32,16 @@ class ClosureService:
     Enhanced service class for closure-related business logic with OpenLR integration.
     """
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, trace_service: Optional[Any] = None):
+        """
+        Args:
+            db: Database session.
+            trace_service: Optional Valhalla map-matching client, forwarded to
+                the OpenLR service. Injectable so tests can supply a stub;
+                defaults to one built from settings.
+        """
         self.db = db
-        self.openlr_service = create_openlr_service()
+        self.openlr_service = create_openlr_service(trace_service=trace_service)
         self.spatial_service = SpatialService(db)
         self.openlr_enabled = settings.OPENLR_ENABLED
         self.validate_roundtrip = settings.OPENLR_VALIDATE_ROUNDTRIP
@@ -790,20 +797,38 @@ class ClosureService:
             openlr_code = self.openlr_service.encode_geometry(geometry)
 
             if not openlr_code:
-                return {"success": False, "error": "OpenLR encoding returned None"}
+                # Best-effort by design: an unavailable map-matcher or an
+                # unmatchable location yields no code, not a failed closure.
+                return {
+                    "success": False,
+                    "error": "OpenLR encoding unavailable (map matching failed)",
+                }
 
             result = {"success": True, "openlr_code": openlr_code}
 
             # Validate roundtrip if enabled
             if self.validate_roundtrip:
                 roundtrip_result = self.openlr_service.test_encoding_roundtrip(geometry)
-                result.update(roundtrip_result)
 
-                # Check if accuracy is acceptable
+                # Merge diagnostics without letting them overwrite `success` or
+                # `openlr_code`, which describe *this* encode attempt.
+                for key, value in roundtrip_result.items():
+                    if key not in ("success", "openlr_code"):
+                        result[key] = value
+
+                # A code whose decoded anchors drift beyond tolerance is not
+                # trustworthy, so reject it rather than persisting it.
                 accuracy = roundtrip_result.get("accuracy_meters", float("inf"))
                 if accuracy > settings.OPENLR_ACCURACY_TOLERANCE:
-                    result["warning"] = (
-                        f"Accuracy ({accuracy}m) exceeds tolerance ({settings.OPENLR_ACCURACY_TOLERANCE}m)"
+                    logger.warning(
+                        "Discarding OpenLR code: accuracy %.2fm exceeds tolerance %.2fm",
+                        accuracy,
+                        settings.OPENLR_ACCURACY_TOLERANCE,
+                    )
+                    result["success"] = False
+                    result["error"] = (
+                        f"Accuracy ({accuracy}m) exceeds tolerance "
+                        f"({settings.OPENLR_ACCURACY_TOLERANCE}m)"
                     )
 
             return result
