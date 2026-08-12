@@ -91,7 +91,9 @@ class ClosureService:
             )
 
             # Generate OpenLR code
-            openlr_result = self._encode_geometry_to_openlr(geometry_geojson)
+            openlr_result = self._encode_geometry_to_openlr(
+                geometry_geojson, closure_data.transport_mode.value
+            )
             if openlr_result.get("success") and openlr_result.get("openlr_code"):
                 closure.openlr_code = openlr_result["openlr_code"]
 
@@ -153,6 +155,12 @@ class ClosureService:
             # Update fields
             update_data = closure_data.dict(exclude_unset=True)
 
+            # Apply the scalar fields first, so that re-encoding below matches
+            # against the closure's *new* transport_mode rather than its old one.
+            for field, value in update_data.items():
+                if field != "geometry" and hasattr(closure, field):
+                    setattr(closure, field, value)
+
             # Handle geometry update
             if "geometry" in update_data and update_data["geometry"]:
                 geometry_geojson = update_data["geometry"]
@@ -165,7 +173,11 @@ class ClosureService:
                 closure.geometry = func.ST_GeomFromText(geometry_wkt, 4326)
 
                 # Regenerate OpenLR code for new geometry
-                openlr_result = self._encode_geometry_to_openlr(geometry_geojson)
+                transport_mode = closure.transport_mode
+                openlr_result = self._encode_geometry_to_openlr(
+                    geometry_geojson,
+                    getattr(transport_mode, "value", transport_mode),
+                )
                 if openlr_result.get("success") and openlr_result.get("openlr_code"):
                     closure.openlr_code = openlr_result["openlr_code"]
                     logger.info(
@@ -176,13 +188,6 @@ class ClosureService:
                         f"Failed to regenerate OpenLR code for closure {closure_id}: {openlr_result.get('error')}"
                     )
                     closure.openlr_code = None
-
-                del update_data["geometry"]
-
-            # Update other fields
-            for field, value in update_data.items():
-                if hasattr(closure, field):
-                    setattr(closure, field, value)
 
             # Update status if needed
             closure.update_status_if_needed()
@@ -700,7 +705,9 @@ class ClosureService:
                     geometry = self._round_geometry_coordinates(geometry)
 
                     # Encode to OpenLR
-                    openlr_result = self._encode_geometry_to_openlr(geometry)
+                    openlr_result = self._encode_geometry_to_openlr(
+                        geometry, closure.transport_mode
+                    )
 
                     if openlr_result.get("success") and openlr_result.get(
                         "openlr_code"
@@ -770,7 +777,9 @@ class ClosureService:
 
         return geometry
 
-    def _encode_geometry_to_openlr(self, geometry: Dict[str, Any]) -> Dict[str, Any]:
+    def _encode_geometry_to_openlr(
+        self, geometry: Dict[str, Any], transport_mode: str = "all"
+    ) -> Dict[str, Any]:
         """
         Encode geometry to OpenLR with validation.
         Note: OpenLR is primarily designed for line segments, so Point geometries
@@ -778,6 +787,9 @@ class ClosureService:
 
         Args:
             geometry: GeoJSON geometry
+            transport_mode: The closure's transport mode, which selects the
+                Valhalla costing used to map-match. A pedestrian closure matched
+                with car costing snaps to the adjacent carriageway.
 
         Returns:
             dict: Encoding result with success status and details
@@ -794,7 +806,9 @@ class ClosureService:
                 }
 
             # Encode LineString to OpenLR
-            openlr_code = self.openlr_service.encode_geometry(geometry)
+            openlr_code = self.openlr_service.encode_geometry(
+                geometry, transport_mode=transport_mode
+            )
 
             if not openlr_code:
                 # Best-effort by design: an unavailable map-matcher or an
@@ -808,7 +822,9 @@ class ClosureService:
 
             # Validate roundtrip if enabled
             if self.validate_roundtrip:
-                roundtrip_result = self.openlr_service.test_encoding_roundtrip(geometry)
+                roundtrip_result = self.openlr_service.test_encoding_roundtrip(
+                    geometry, transport_mode=transport_mode
+                )
 
                 # Merge diagnostics without letting them overwrite `success` or
                 # `openlr_code`, which describe *this* encode attempt.
