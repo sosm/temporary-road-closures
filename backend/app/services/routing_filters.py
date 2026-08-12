@@ -11,9 +11,12 @@ model. The maps translate a closure's ``transport_mode`` and ``closure_type``
 into the set of routing modes it affects.
 """
 
-from typing import List
+import logging
+from typing import List, Optional
 
 from app.schemas.routing import RoutingMode
+
+logger = logging.getLogger(__name__)
 
 # All routing modes, used as the fallback for unknown keys (mirrors the
 # frontend's `?? transportModeMap.all`).
@@ -37,6 +40,32 @@ TRANSPORT_MODE_MAP = {
     "emergency": [RoutingMode.AUTO],
 }
 
+# DB transport_mode value -> the single Valhalla costing model to map-match with.
+#
+# Distinct from TRANSPORT_MODE_MAP above: that map answers "which routing modes
+# does this closure affect?" (a list, used for filtering); this one answers
+# "which road network should we snap this closure's geometry onto?" (exactly one
+# costing string, which is all trace_attributes accepts). Kept consistent with
+# TRANSPORT_MODE_MAP's semantics -- every mode that collapses to
+# RoutingMode.AUTO there maps to "auto" here.
+TRANSPORT_MODE_COSTING = {
+    "car": "auto",
+    "hgv": "auto",
+    "motorcycle": "auto",
+    "bus": "auto",
+    "emergency": "auto",
+    "bicycle": "bicycle",
+    "foot": "pedestrian",
+    # "all" is the schema default and does not correspond to a single Valhalla
+    # costing. "auto" is an explicit choice, not a fallthrough: it matches the
+    # main carriageway, which is the physically correct anchor for a closure
+    # declared to affect every mode.
+    "all": "auto",
+}
+
+# Used when a closure's transport_mode is missing or unrecognised.
+DEFAULT_COSTING = "auto"
+
 # closure_type value -> routing modes it affects.
 # Mirrors closureTypeEffects (routing-utils.ts:19-31). Keys are the string
 # values of the DB ClosureType enum (models/closure.py:33).
@@ -53,6 +82,23 @@ CLOSURE_TYPE_EFFECTS = {
     "bridge_closure": [RoutingMode.AUTO, RoutingMode.BICYCLE, RoutingMode.PEDESTRIAN],
     "tunnel_closure": [RoutingMode.AUTO, RoutingMode.BICYCLE, RoutingMode.PEDESTRIAN],
 }
+
+
+def costing_for_transport_mode(transport_mode: Optional[str]) -> str:
+    """Valhalla costing model to map-match a closure of this transport mode.
+
+    Unknown/missing values fall back to "auto" (logged) -- a bad mode should
+    degrade to a plausible match, never break encoding.
+    """
+    costing = TRANSPORT_MODE_COSTING.get(transport_mode)
+    if costing is None:
+        logger.warning(
+            "Unknown transport_mode %r for OpenLR map-matching; falling back to %r",
+            transport_mode,
+            DEFAULT_COSTING,
+        )
+        return DEFAULT_COSTING
+    return costing
 
 
 def does_closure_affect_mode(

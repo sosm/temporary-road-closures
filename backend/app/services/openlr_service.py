@@ -24,6 +24,7 @@ import requests
 from app.config import settings
 from app.core.exceptions import GeospatialException, OpenLRException
 from app.services.openlr_translation import build_line_location_reference
+from app.services.routing_filters import costing_for_transport_mode
 from app.services.valhalla_trace_service import (
     ValhallaTraceService,
     create_valhalla_trace_service,
@@ -64,15 +65,21 @@ class OpenLRService:
             self.use_valhalla,
         )
 
-    def _map_match(self, coordinates: List[List[float]]):
+    def _map_match(self, coordinates: List[List[float]], costing: str = "auto"):
         """Bridge to the async trace service from this sync class.
 
         Uses anyio.from_thread when called via run_in_threadpool; falls back
         to asyncio.run for plain sync callers (scripts, tests, regeneration).
         If a loop is already running in this thread, map-matching is skipped
         and returns None rather than risking a deadlock.
+
+        Args:
+            coordinates: GeoJSON LineString coordinates, ``[[lon, lat], ...]``.
+            costing: Valhalla costing model to match against.
         """
-        coro_factory = lambda: self.trace_service.trace_attributes(coordinates)
+        coro_factory = lambda: self.trace_service.trace_attributes(
+            coordinates, costing=costing
+        )
         try:
             return anyio.from_thread.run(coro_factory)
         except RuntimeError:
@@ -91,7 +98,9 @@ class OpenLRService:
             )
             return None
 
-    def encode_geometry(self, geometry: Dict[str, Any]) -> Optional[str]:
+    def encode_geometry(
+        self, geometry: Dict[str, Any], transport_mode: str = "all"
+    ) -> Optional[str]:
         """
         Encode a GeoJSON geometry to a spec-compliant OpenLR code.
 
@@ -101,6 +110,10 @@ class OpenLRService:
 
         Args:
             geometry: GeoJSON LineString geometry
+            transport_mode: DB transport_mode of the closure, selecting the
+                Valhalla costing to match against. Defaults to ``"all"``
+                (i.e. ``auto``), preserving the historic behaviour for callers
+                that have no mode to offer.
 
         Returns:
             str: base64 OpenLR code, or ``None`` if the location could not be
@@ -128,7 +141,9 @@ class OpenLRService:
             )
             return None
 
-        trace = self._map_match(coordinates)
+        trace = self._map_match(
+            coordinates, costing=costing_for_transport_mode(transport_mode)
+        )
         if trace is None:
             logger.warning(
                 "OpenLR encoding skipped - map matching returned no result for "
@@ -239,7 +254,9 @@ class OpenLRService:
             logger.error(f"OSM way encoding failed: {e}")
             raise OpenLRException(f"OSM way encoding failed: {str(e)}")
 
-    def test_encoding_roundtrip(self, geometry: Dict[str, Any]) -> Dict[str, Any]:
+    def test_encoding_roundtrip(
+        self, geometry: Dict[str, Any], transport_mode: str = "all"
+    ) -> Dict[str, Any]:
         """
         Encode then decode a geometry and report how far the anchors moved.
 
@@ -249,12 +266,15 @@ class OpenLRService:
 
         Args:
             geometry: GeoJSON geometry to test
+            transport_mode: Must match the mode used for the encode being
+                validated -- measuring accuracy against a different costing's
+                map-match would compare two unrelated locations.
 
         Returns:
             dict: Test results with original, encoded, and decoded data
         """
         try:
-            encoded = self.encode_geometry(geometry)
+            encoded = self.encode_geometry(geometry, transport_mode=transport_mode)
             decoded = self.decode_openlr(encoded) if encoded else None
 
             if not decoded:

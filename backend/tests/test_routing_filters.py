@@ -6,11 +6,18 @@ These assert parity with the frontend truth table in
 including the "unknown key -> all modes" fallback. Pure functions, no DB.
 """
 
+import logging
+
 import pytest
 
 from app.models.closure import ClosureType, TransportMode
 from app.schemas.routing import RoutingMode
-from app.services.routing_filters import does_closure_affect_mode
+from app.services.routing_filters import (
+    TRANSPORT_MODE_COSTING,
+    TRANSPORT_MODE_MAP,
+    costing_for_transport_mode,
+    does_closure_affect_mode,
+)
 
 # Expected truth, transcribed independently from routing-utils.ts so the test is
 # a real cross-check of the Python port (not a copy of the same dicts).
@@ -79,3 +86,60 @@ def test_unknown_transport_mode_falls_back_to_all():
         does_closure_affect_mode("bike_lane_closure", "spaceship", RoutingMode.AUTO)
         is False
     )
+
+
+# --- transport_mode -> Valhalla costing (OpenLR map-matching) ----------------
+
+
+@pytest.mark.parametrize(
+    ("transport_mode", "expected"),
+    [
+        ("car", "auto"),
+        ("hgv", "auto"),
+        ("motorcycle", "auto"),
+        ("bus", "auto"),
+        ("emergency", "auto"),
+        ("bicycle", "bicycle"),
+        ("foot", "pedestrian"),
+        ("all", "auto"),
+    ],
+)
+def test_costing_for_each_transport_mode(transport_mode, expected):
+    assert costing_for_transport_mode(transport_mode) == expected
+
+
+def test_every_db_transport_mode_is_mapped():
+    """No DB enum value may reach Valhalla via the unknown-key fallback."""
+    for mode in TransportMode:
+        assert mode.value in TRANSPORT_MODE_COSTING
+
+
+def test_all_maps_to_auto_explicitly_not_by_fallback():
+    """
+    "all" is a deliberate entry, not an accident of the unknown-key fallback:
+    removing it must change behaviour detectably, so assert the key is present
+    rather than only that the returned value happens to be "auto".
+    """
+    assert "all" in TRANSPORT_MODE_COSTING
+    assert TRANSPORT_MODE_COSTING["all"] == "auto"
+
+
+@pytest.mark.parametrize("bad_mode", ["spaceship", "", None, "AUTO", "Foot"])
+def test_unknown_transport_mode_falls_back_to_auto(bad_mode, caplog):
+    with caplog.at_level(logging.WARNING, logger="app.services.routing_filters"):
+        assert costing_for_transport_mode(bad_mode) == "auto"
+    assert "Unknown transport_mode" in caplog.text
+
+
+def test_costing_is_consistent_with_the_routing_mode_map():
+    """Single-mode entries in TRANSPORT_MODE_MAP must agree with our costing."""
+    single_mode_costing = {
+        RoutingMode.AUTO: "auto",
+        RoutingMode.BICYCLE: "bicycle",
+        RoutingMode.PEDESTRIAN: "pedestrian",
+    }
+    for mode, routing_modes in TRANSPORT_MODE_MAP.items():
+        if len(routing_modes) == 1:
+            assert costing_for_transport_mode(mode) == single_mode_costing[
+                routing_modes[0]
+            ], f"{mode} disagrees with TRANSPORT_MODE_MAP"

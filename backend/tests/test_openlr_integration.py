@@ -7,10 +7,13 @@ closure still saves when map matching is unavailable), and the two result-
 merging bugs fixed alongside it.
 """
 
-from unittest.mock import MagicMock, patch
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.closure import ClosureType, TransportMode
+from app.schemas.closure import ClosureCreate, ClosureUpdate
 from app.services.closure_service import ClosureService
 from app.services.valhalla_trace_service import MatchedEdge, TraceResult
 
@@ -152,6 +155,114 @@ def test_use_valhalla_setting_exists_and_defaults_on():
 
     assert hasattr(settings, "OPENLR_USE_VALHALLA")
     assert settings.OPENLR_USE_VALHALLA is True
+
+
+# --- transport mode reaches Valhalla ----------------------------------------
+
+
+def _chain_service(trace_result=TraceResult(edges=_EDGES)):
+    """
+    ClosureService with a *real* ``_map_match``, so ``trace_attributes`` is
+    genuinely invoked and its costing can be asserted. The ``_service`` helper
+    above stubs ``_map_match``, hiding exactly this hop.
+    """
+    trace_service = MagicMock()
+    trace_service.trace_attributes = AsyncMock(return_value=trace_result)
+    return ClosureService(db=MagicMock(), trace_service=trace_service)
+
+
+def _costings_seen(service):
+    """
+    The distinct costings passed to Valhalla. This is a set because roundtrip
+    validation re-encodes, so one logical encode makes several calls -- what
+    matters is that they all agree on the mode.
+    """
+    calls = service.openlr_service.trace_service.trace_attributes.call_args_list
+    assert calls, "expected at least one trace_attributes call"
+    return {call.kwargs["costing"] for call in calls}
+
+
+def test_closure_transport_mode_reaches_trace_attributes():
+    service = _chain_service()
+    service._encode_geometry_to_openlr(_LINE, "bicycle")
+    assert _costings_seen(service) == {"bicycle"}
+
+
+def test_create_closure_map_matches_with_the_closures_own_mode():
+    """The full chain: create a bicycle closure, assert bicycle costing."""
+    service = _chain_service()
+    closure_data = ClosureCreate(
+        description="Cycleway resurfacing",
+        closure_type=ClosureType.MAINTENANCE,
+        start_time=datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc),
+        end_time=datetime(2026, 8, 10, 17, 0, tzinfo=timezone.utc),
+        transport_mode=TransportMode.BICYCLE,
+        geometry=_LINE,
+    )
+
+    service.create_closure(closure_data, user_id=1)
+
+    assert _costings_seen(service) == {"bicycle"}
+
+
+def test_update_closure_uses_the_new_transport_mode_not_the_old_one():
+    """
+    Regression: the geometry re-encode used to run before the incoming fields
+    were applied, so a mode+geometry update matched against the *previous*
+    mode. Changing foot -> bicycle must map-match as a bicycle.
+    """
+    service = _chain_service()
+    closure = MagicMock()
+    closure.transport_mode = "foot"
+    service.get_closure_by_id = MagicMock(return_value=closure)
+    service._can_edit_closure = MagicMock(return_value=True)
+
+    service.update_closure(
+        closure_id=1,
+        closure_data=ClosureUpdate(
+            geometry=_LINE, transport_mode=TransportMode.BICYCLE
+        ),
+        user=MagicMock(),
+    )
+
+    assert _costings_seen(service) == {"bicycle"}
+
+
+def test_update_closure_keeps_the_existing_mode_when_only_geometry_changes():
+    service = _chain_service()
+    closure = MagicMock()
+    closure.transport_mode = "foot"
+    service.get_closure_by_id = MagicMock(return_value=closure)
+    service._can_edit_closure = MagicMock(return_value=True)
+
+    service.update_closure(
+        closure_id=1,
+        closure_data=ClosureUpdate(geometry=_LINE),
+        user=MagicMock(),
+    )
+
+    assert _costings_seen(service) == {"pedestrian"}
+
+
+def test_bicycle_closure_still_saves_when_matching_fails():
+    """
+    The best-effort contract holds with the new costing parameter: an
+    unmatchable bicycle closure yields no code instead of an exception.
+    """
+    service = _chain_service(trace_result=None)
+    closure_data = ClosureCreate(
+        description="Off-network path",
+        closure_type=ClosureType.MAINTENANCE,
+        start_time=datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc),
+        transport_mode=TransportMode.BICYCLE,
+        geometry=_LINE,
+    )
+
+    closure = service.create_closure(closure_data, user_id=1)
+
+    assert _costings_seen(service) == {"bicycle"}
+    assert closure.openlr_code is None
+    service.db.commit.assert_called_once()
 
 
 def test_use_valhalla_is_exposed_in_openlr_settings():

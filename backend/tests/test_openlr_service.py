@@ -7,7 +7,7 @@ degradation contract (encoding returns None rather than raising when matching
 is unavailable).
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import openlr
 import pytest
@@ -76,6 +76,68 @@ def test_encode_returns_none_when_valhalla_disabled():
     service = _service(use_valhalla=False)
     assert service.encode_geometry(_LINE) is None
     service._map_match.assert_not_called()
+
+
+# --- transport mode selects the Valhalla costing -----------------------------
+
+
+def _tracing_service(trace_result=TraceResult(edges=_EDGES)):
+    """
+    A service with a *real* ``_map_match``, so the costing actually reaches
+    ``trace_attributes``. The other helper stubs ``_map_match`` out, which is
+    exactly the boundary the mode->costing translation crosses.
+    """
+    trace_service = MagicMock()
+    trace_service.trace_attributes = AsyncMock(return_value=trace_result)
+    service = OpenLRService(trace_service=trace_service)
+    service.use_valhalla = True
+    return service
+
+
+@pytest.mark.parametrize(
+    ("transport_mode", "expected_costing"),
+    [
+        ("car", "auto"),
+        ("hgv", "auto"),
+        ("motorcycle", "auto"),
+        ("bus", "auto"),
+        ("emergency", "auto"),
+        ("bicycle", "bicycle"),
+        ("foot", "pedestrian"),
+        ("all", "auto"),
+        ("spaceship", "auto"),
+    ],
+)
+def test_transport_mode_selects_the_costing(transport_mode, expected_costing):
+    service = _tracing_service()
+    service.encode_geometry(_LINE, transport_mode=transport_mode)
+    assert (
+        service.trace_service.trace_attributes.call_args.kwargs["costing"]
+        == expected_costing
+    )
+
+
+def test_encode_defaults_to_auto_costing():
+    """Callers with no mode to offer (encode_osm_way, POST /encode) keep auto."""
+    service = _tracing_service()
+    service.encode_geometry(_LINE)
+    assert service.trace_service.trace_attributes.call_args.kwargs["costing"] == "auto"
+
+
+def test_roundtrip_matches_with_the_same_costing_as_the_encode():
+    """
+    Accuracy must be measured against the same map-match the code came from;
+    validating a pedestrian encode against an auto match compares two
+    different locations.
+    """
+    service = _tracing_service()
+    service.test_encoding_roundtrip(_LINE, transport_mode="foot")
+
+    costings = {
+        call.kwargs["costing"]
+        for call in service.trace_service.trace_attributes.call_args_list
+    }
+    assert costings == {"pedestrian"}
 
 
 def test_encode_returns_none_when_service_disabled():
