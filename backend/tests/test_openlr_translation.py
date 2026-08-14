@@ -76,9 +76,38 @@ def test_to_fow(use, road_class, expected):
     assert to_fow(use, road_class) == expected
 
 
+# Valhalla reports every non-motorised way as road_class `service_other`, so
+# without a `use` entry they would all fall through to SINGLE_CARRIAGEWAY.
+@pytest.mark.parametrize(
+    "use",
+    ["footway", "cycleway", "path", "steps", "pedestrian_crossing"],
+)
+def test_non_motorised_ways_are_other_not_a_carriageway(use):
+    assert to_fow(use, "service_other") == FOW.OTHER
+
+
+# These are drivable roads without separated carriageways, so
+# SINGLE_CARRIAGEWAY is already correct; OTHER would discard real information.
+@pytest.mark.parametrize(
+    "use",
+    [
+        "living_street",
+        "service_road",
+        "alley",
+        "parking_aisle",
+        "driveway",
+        "emergency_access",
+    ],
+)
+def test_drivable_service_ways_stay_single_carriageway(use):
+    assert to_fow(use, "service_other") == FOW.SINGLE_CARRIAGEWAY
+
+
 def test_use_takes_precedence_over_road_class():
     # A roundabout on a motorway is still a roundabout.
     assert to_fow("roundabout", "motorway") == FOW.ROUNDABOUT
+    # A footway mistagged onto a motorway class is still not a motorway.
+    assert to_fow("footway", "motorway") == FOW.OTHER
 
 
 def test_unknown_inputs_give_undefined_fow():
@@ -229,6 +258,20 @@ def test_built_reference_round_trips_through_binary_encode():
     # 24-bit coordinate quantisation costs well under a metre.
     assert abs(lon - 8.5410) < 1e-4
     assert abs(lat - 47.3760) < 1e-4
+
+
+def test_footway_encodes_as_other_through_the_binary_codec():
+    """A footpath must still read as OTHER after a real encode/decode cycle."""
+    coords = [[8.5410, 47.3760], [8.5430, 47.3770], [8.5450, 47.3780]]
+    edges = [_edge(road_class="service_other", use="footway") for _ in range(3)]
+    ref = build_line_location_reference(coords, edges)
+
+    assert all(p.fow == FOW.OTHER for p in ref.points)
+    # FRC is out of scope for this mapping and must be untouched.
+    assert all(p.frc == FRC.FRC7 for p in ref.points)
+
+    decoded = openlr.binary_decode(openlr.binary_encode(ref))
+    assert all(p.fow == FOW.OTHER for p in decoded.points)
 
 
 def test_long_span_still_encodes_instead_of_raising():
