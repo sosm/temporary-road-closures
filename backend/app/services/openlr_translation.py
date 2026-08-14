@@ -48,6 +48,13 @@ _USE_TO_FOW = {
     "roundabout": FOW.ROUNDABOUT,
     "ramp": FOW.SLIPROAD,
     "turn_channel": FOW.SLIPROAD,
+    # Non-motorised ways: not carriageways, and OpenLR has no more specific
+    # category for them.
+    "footway": FOW.OTHER,
+    "cycleway": FOW.OTHER,
+    "path": FOW.OTHER,
+    "steps": FOW.OTHER,
+    "pedestrian_crossing": FOW.OTHER,
 }
 
 
@@ -65,9 +72,10 @@ def road_class_to_frc(road_class: Optional[str]) -> FRC:
 def to_fow(use: Optional[str], road_class: Optional[str]) -> FOW:
     """Map Valhalla ``use`` + ``road_class`` to an OpenLR Form of Way.
 
-    ``use`` wins when it describes the road's form (roundabout, ramp).
-    Otherwise the form is inferred from class: motorways are dual carriageways,
-    everything else is treated as a single carriageway.
+    ``use`` wins when it describes the road's form (roundabout, ramp) or when
+    the way is non-motorised (footway, steps), which OpenLR can only express as
+    ``OTHER``. Otherwise the form is inferred from class: motorways are dual
+    carriageways, everything else is treated as a single carriageway.
     """
     normalised_use = (use or "").strip().lower()
     if normalised_use in _USE_TO_FOW:
