@@ -7,7 +7,7 @@ uvicorn[standard]==0.24.0
 gunicorn==23.0.0
 
 # Database and ORM
-sqlalchemy==2.0.23
+sqlalchemy==2.0.51
 psycopg2-binary==2.9.9
 geoalchemy2==0.14.2
 
