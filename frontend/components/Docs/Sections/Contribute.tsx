@@ -15,7 +15,7 @@ const Contribute: React.FC = () => {
 
             <InfoBox type="info" title="Google Summer of Code 2025">
                 <p>
-                    This project is being developed as part of GSoC 2025 with OpenStreetMap.
+                    This project is being developed as part of GSoC 2025 and 2026 with OpenStreetMap.
                     We welcome community contributions and feedback!
                 </p>
             </InfoBox>
