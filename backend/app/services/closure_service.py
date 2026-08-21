@@ -704,9 +704,15 @@ class ClosureService:
                     geometry = json.loads(geometry_result[0])
                     geometry = self._round_geometry_coordinates(geometry)
 
-                    # Encode to OpenLR
+                    # Encode to OpenLR. The costing lookup is keyed by the
+                    # string transport_mode value; unwrap defensively to match
+                    # update_closure above. TransportMode subclasses str so the
+                    # raw enum also resolves today, but this keeps the three
+                    # call sites consistent and survives dropping that mixin.
+                    transport_mode = closure.transport_mode
                     openlr_result = self._encode_geometry_to_openlr(
-                        geometry, closure.transport_mode
+                        geometry,
+                        getattr(transport_mode, "value", transport_mode),
                     )
 
                     if openlr_result.get("success") and openlr_result.get(
