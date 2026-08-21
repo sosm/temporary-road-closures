@@ -7,6 +7,7 @@ closure still saves when map matching is unavailable), and the two result-
 merging bugs fixed alongside it.
 """
 
+import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -241,6 +242,53 @@ def test_update_closure_keeps_the_existing_mode_when_only_geometry_changes():
         user=MagicMock(),
     )
 
+    assert _costings_seen(service) == {"pedestrian"}
+
+
+def _regenerating_service(transport_mode):
+    """
+    ClosureService set up to regenerate exactly one closure with the given
+    stored transport_mode. ``regenerate_openlr_codes(force=True)`` issues two
+    queries: ``query(Closure).all()`` for the rows, then a per-row
+    ``query(ST_AsGeoJSON(...)).filter(...).first()`` for the geometry.
+    """
+    service = _chain_service()
+    closure = MagicMock()
+    closure.id = 1
+    closure.transport_mode = transport_mode
+
+    query = service.db.query.return_value
+    query.all.return_value = [closure]
+    query.filter.return_value.first.return_value = [json.dumps(_LINE)]
+    return service
+
+
+def test_regenerate_uses_the_closures_own_mode_not_the_default():
+    """
+    Bulk regeneration must map-match each closure with its own mode rather
+    than defaulting to car costing.
+
+    Note: passing the raw ORM enum here happens to work because TransportMode
+    subclasses str, so it hashes equal to its own value. These tests pin the
+    *behaviour* so that stays true -- dropping the str mixin, or switching the
+    column to a native PG enum, would otherwise silently regress every
+    bicycle/foot closure to "auto".
+    """
+    service = _regenerating_service(TransportMode.BICYCLE)
+
+    results = service.regenerate_openlr_codes(force=True)
+
+    assert results["total_processed"] == 1
+    assert _costings_seen(service) == {"bicycle"}
+
+
+def test_regenerate_accepts_a_plain_string_mode():
+    """The column is a VARCHAR, so a plain string must work identically."""
+    service = _regenerating_service("foot")
+
+    results = service.regenerate_openlr_codes(force=True)
+
+    assert results["total_processed"] == 1
     assert _costings_seen(service) == {"pedestrian"}
 
 

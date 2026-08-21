@@ -3,6 +3,7 @@ API endpoints for importing 3rd party closure data.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from typing import Optional
 import json
@@ -94,9 +95,16 @@ async def import_closures(
         # Create import service
         import_service = ImportService(db)
 
-        # Import data based on format
-        result = await import_service.import_data(
-            content=content, options=options, user_id=current_user.id
+        # Import data based on format.
+        # OpenLR encoding map-matches against Valhalla, so this must not run on
+        # the event loop; run_in_threadpool also gives the encoder a worker
+        # thread it can bridge back to async from, and keeps the loop free to
+        # serve other requests for the duration of the import.
+        result = await run_in_threadpool(
+            import_service.import_data,
+            content=content,
+            options=options,
+            user_id=current_user.id,
         )
 
         return result
@@ -152,8 +160,12 @@ async def import_geojson(
         )
 
         import_service = ImportService(db)
-        result = await import_service.import_geojson_data(
-            data=data.dict(), options=options, user_id=current_user.id
+        # See the note in import_closures: encoding must not run on the event loop.
+        result = await run_in_threadpool(
+            import_service.import_geojson_data,
+            data=data.dict(),
+            options=options,
+            user_id=current_user.id,
         )
 
         return result

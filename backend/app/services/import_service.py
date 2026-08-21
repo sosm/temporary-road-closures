@@ -28,11 +28,15 @@ class ImportService:
         self.db = db
         self.closure_service = ClosureService(db)
 
-    async def import_data(
+    def import_data(
         self, content: bytes, options: ImportOptions, user_id: int
     ) -> ImportResult:
         """
         Import closure data from file content.
+
+        Synchronous by design: importing map-matches each closure against
+        Valhalla to derive its OpenLR code, which cannot run on the event
+        loop. Call via ``run_in_threadpool`` (see ``api/import_data.py``).
 
         Args:
             content: File content as bytes
@@ -51,22 +55,22 @@ class ImportService:
         # Route to appropriate import method based on format
         if options.format == ImportFormat.GEOJSON:
             data = json.loads(text_content)
-            return await self.import_geojson_data(data, options, user_id)
+            return self.import_geojson_data(data, options, user_id)
         elif options.format == ImportFormat.CSV:
-            return await self.import_csv_data(text_content, options, user_id)
+            return self.import_csv_data(text_content, options, user_id)
         elif options.format == ImportFormat.WAZE:
             data = json.loads(text_content)
-            return await self.import_waze_data(data, options, user_id)
+            return self.import_waze_data(data, options, user_id)
         elif options.format == ImportFormat.HERE:
             data = json.loads(text_content)
-            return await self.import_here_data(data, options, user_id)
+            return self.import_here_data(data, options, user_id)
         elif options.format == ImportFormat.TOMTOM:
             data = json.loads(text_content)
-            return await self.import_tomtom_data(data, options, user_id)
+            return self.import_tomtom_data(data, options, user_id)
         else:
             raise ValidationException(f"Unsupported format: {options.format}")
 
-    async def import_geojson_data(
+    def import_geojson_data(
         self, data: Dict[str, Any], options: ImportOptions, user_id: int
     ) -> ImportResult:
         """
@@ -124,7 +128,7 @@ class ImportService:
             closure_ids=closure_ids,
         )
 
-    async def import_csv_data(
+    def import_csv_data(
         self, content: str, options: ImportOptions, user_id: int
     ) -> ImportResult:
         """
@@ -168,7 +172,7 @@ class ImportService:
             closure_ids=closure_ids,
         )
 
-    async def import_waze_data(
+    def import_waze_data(
         self, data: Dict[str, Any], options: ImportOptions, user_id: int
     ) -> ImportResult:
         """
@@ -215,7 +219,7 @@ class ImportService:
             closure_ids=closure_ids,
         )
 
-    async def import_here_data(
+    def import_here_data(
         self, data: Dict[str, Any], options: ImportOptions, user_id: int
     ) -> ImportResult:
         """
@@ -263,7 +267,7 @@ class ImportService:
             closure_ids=closure_ids,
         )
 
-    async def import_tomtom_data(
+    def import_tomtom_data(
         self, data: Dict[str, Any], options: ImportOptions, user_id: int
     ) -> ImportResult:
         """
