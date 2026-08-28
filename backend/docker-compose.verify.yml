@@ -1,0 +1,36 @@
+# Live-verification overlay for the dev stack.
+#
+# Why this exists: backend/Dockerfile installs via Poetry, and poetry.lock is
+# stale -- it predates openlr==1.0.1, so `docker compose build api` fails with
+#   "Because osm-road-closures-api depends on openlr (1.0.1) which doesn't
+#    match any versions, version solving failed."
+# This overlay builds the api service from Dockerfile.prod instead, which
+# installs from requirements.txt -- the same path CI uses
+# (.github/workflows/ci.yml). Delete this file once poetry.lock is regenerated.
+#
+# It also pins a SINGLE uvicorn worker and debug logging, which live checks of
+# event-loop behaviour depend on: the 4-worker gunicorn production command lets
+# a second worker answer while one is blocked, masking exactly the class of bug
+# PR #127 fixed.
+#
+# Usage (from backend/):
+#   docker compose -f docker-compose.yml -f docker-compose.verify.yml up -d --build
+#
+# Unit tests do NOT need this -- use the openlr-test image instead:
+#   docker run --rm -v "$PWD":/app -w /app openlr-test:latest python -m pytest tests/ -q
+
+services:
+    api:
+        build:
+            context: .
+            dockerfile: Dockerfile.prod
+        environment:
+            DATABASE_URL: postgresql://postgres:postgres@db:5432/osm_closures_dev
+            REDIS_URL: redis://redis:6379/0
+            DEBUG: "true"
+            ENVIRONMENT: development
+            VALHALLA_URL: http://valhalla:8002
+            SECRET_KEY: local-verification-only-not-a-real-secret
+            LOG_LEVEL: DEBUG
+            OPENLR_ENABLED: "true"
+        command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level debug

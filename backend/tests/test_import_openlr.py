@@ -98,6 +98,7 @@ def _created_closures(service):
         "import_waze_data",
         "import_here_data",
         "import_tomtom_data",
+        "import_ost_data",
     ],
 )
 def test_import_methods_are_synchronous(method_name):

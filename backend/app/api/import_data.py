@@ -53,6 +53,7 @@ async def import_closures(
     - `waze`: Waze Traffic API format
     - `here`: HERE Traffic API format
     - `tomtom`: TomTom Traffic API format
+    - `ost`: OST prealigner GeoJSON feed
 
     **Required Fields:**
     - `attribution`: Attribution string for the data source

@@ -16,6 +16,7 @@ class ImportFormat(str, Enum):
     WAZE = "waze"
     HERE = "here"
     TOMTOM = "tomtom"
+    OST = "ost"
 
 
 class ImportOptions(BaseModel):
@@ -46,6 +47,9 @@ class ImportResult(BaseModel):
     total_records: int = Field(..., description="Total records in import file")
     imported_count: int = Field(..., description="Number of successfully imported closures")
     failed_count: int = Field(..., description="Number of failed imports")
+    # Distinct from failed_count: a record the feed marks as deleted is valid
+    # input with nothing to do, not malformed data.
+    skipped_count: int = Field(0, description="Number of records skipped, not failed")
     errors: List[str] = Field(default_factory=list, description="List of error messages")
     closure_ids: List[int] = Field(
         default_factory=list, description="IDs of created closures"
