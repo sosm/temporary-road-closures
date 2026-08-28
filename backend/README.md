@@ -421,31 +421,62 @@ curl http://localhost:8000/api/v1/users/{user_id}/stats
 
 ### Running Tests
 
+Use the `openlr-test` image. The local `.venv` is a broken Python 3.14 stub, and
+`docker compose exec api pytest` needs an `api` container that currently cannot
+build (see the note below).
+
 ```bash
-# Run all tests
-docker-compose exec api pytest
+# Run all tests (from backend/)
+docker run --rm -v "$PWD":/app -w /app openlr-test:latest python -m pytest tests/ -q
 
-# Run with coverage
-docker-compose exec api pytest --cov=app
+# Run a specific test file
+docker run --rm -v "$PWD":/app -w /app openlr-test:latest \
+  python -m pytest tests/test_openlr_integration.py -v
 
-# Run specific test file
-docker-compose exec api pytest tests/test_closures.py
-
-# Test OpenLR integration
-docker-compose exec api pytest tests/test_openlr.py -v
+# Rebuild the image if dependencies changed
+docker build -t openlr-test:latest -f Dockerfile.prod .
 ```
+
+### Live verification against the real stack
+
+Some behaviour can only be checked against real Postgres + Valhalla — that OpenLR
+codes are actually generated, that Valhalla is genuinely contacted, and that a
+long import does not block the event loop. Use the verification overlay:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.verify.yml up -d --build
+```
+
+`docker-compose.verify.yml` builds the API from `Dockerfile.prod` (installing from
+`requirements.txt`, as CI does) and runs a **single** uvicorn worker.
+
+Both workarounds exist because `backend/Dockerfile` installs via Poetry and
+`poetry.lock` is stale — it predates `openlr==1.0.1`, so building the dev `api`
+image fails with `Because osm-road-closures-api depends on openlr (1.0.1) which
+doesn't match any versions`. Regenerating the lockfile would let both fall back to
+the plain dev image.
+
+The single worker matters: the 4-worker production command lets another worker
+answer while one is blocked, which would mask event-loop blocking of the kind
+fixed in PR #127.
 
 ### Test Structure
 
 ```
 tests/
-├── conftest.py              # Test configuration
-├── test_auth.py             # Authentication tests
-├── test_closures.py         # Closure operations
-├── test_users.py            # User management
-├── test_openlr.py           # OpenLR integration
-├── test_spatial.py          # Geospatial operations
-└── test_api_integration.py  # End-to-end tests
+├── conftest.py                     # Stubs the DB engine before app import
+├── test_import_openlr.py           # Import path OpenLR regression (PR #127)
+├── test_import_ost.py              # OST prealigner feed import skeleton
+├── test_openlr_integration.py      # OpenLR wiring inside ClosureService
+├── test_openlr_service.py          # OpenLR service behaviour
+├── test_openlr_translation.py      # FRC/FOW/LRP assembly
+├── test_valhalla_trace_service.py  # Valhalla map-matching client
+├── test_routing_service.py         # Closure-aware routing
+├── test_routing_filters.py         # Transport mode / costing maps
+├── test_spatial_buffer.py          # Geospatial buffering
+├── test_bbox_normalisation.py      # Bounding box handling
+├── test_closure_tiles.py           # Tile queries
+└── test_oauth_fix.py               # OAuth regression
 ```
 
 ## 🔧 Troubleshooting
