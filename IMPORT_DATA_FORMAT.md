@@ -11,6 +11,7 @@ The system supports importing closure data from the following formats:
 3. **Waze** - Waze Traffic API format
 4. **HERE** - HERE Traffic API format
 5. **TomTom** - TomTom Traffic API format
+6. **OST** - OST prealigner GeoJSON feed (skeleton)
 
 ## API Endpoint
 
@@ -21,7 +22,7 @@ POST /api/v1/import/
 
 **Parameters:**
 - `file` (required): File upload containing the data
-- `format` (required): Data format (geojson, csv, waze, here, tomtom)
+- `format` (required): Data format (geojson, csv, waze, here, tomtom, ost)
 - `attribution` (required): Attribution string for the data source
 - `source` (required): Name of the data source
 - `data_license` (optional): License under which the data is provided
@@ -226,6 +227,93 @@ TomTom Traffic API incidents can be imported:
 **Notes:**
 - Uses standard GeoJSON geometry
 - Transport mode defaults to `all`
+
+### 6. OST Data Format
+
+The OST (Ostschweizer Fachhochschule) prealigner feed is a standard GeoJSON
+`FeatureCollection`. Unlike the other supported sources it carries **no
+structured closure-type or date fields** — both are embedded in translated
+free text:
+
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "comment:de": "Freigegeben: Via Cartiera 8, 6598 Tenero-Contra, Switzerland &lt;-&gt; Via Cartiera 10, 6598 Tenero-Contra, Switzerland  Sachlage: Verkehrsbehinderung Baustelle Dauer:  voraussichtlich 23.10.2023 07:00 bis 29.03.2024 17:30 Empfehlung: eine lokale Umleitung ist eingerichtet Empfohlene Umleitung: lokale Umleitung",
+        "comment:fr": "Libéré: ... Situation: ... Durée: ...",
+        "comment:it": "Approvato: ... Situazione: ... Durata: ...",
+        "osm_routepoints": [451198454, 451198455, 451198456],
+        "osm_start_node_offset_m": 25,
+        "osm_end_node_offset_m": -100,
+        "is_deleted": false
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[8.817322, 47.2241366], [8.8184365, 47.2240262]]
+      }
+    }
+  ]
+}
+```
+
+**Field mapping:**
+
+| Feed field | Maps to | Notes |
+|---|---|---|
+| `comment:de` → `Sachlage:` clause | `closure_type` | regex, via `OST_SACHLAGE_TYPE_MAP` |
+| `comment:de` → `Dauer:` clause | `start_time` / `end_time` | regex; unparseable fails the record |
+| `comment:de` → status + location | `description` | HTML-unescaped |
+| `geometry` | `geometry` | precomputed convenience field, see below |
+| `is_deleted` | — | `true` skips the record (counted as skipped) |
+| `osm_routepoints`, `osm_*_offset_m` | *(unused)* | authoritative reference, not yet resolved |
+| *(no field)* | `transport_mode` | always `all`; the feed has no mode field |
+
+**The `comment:de` grammar.** The German comment is the one parsed —
+`comment:fr` / `comment:it` are the same record translated, and German is
+OST's primary language for this data. Its clause structure is:
+
+```
+<Status>: <address> <-> <address>  Sachlage: <cause> Dauer: <qualifier> <start> bis <end> Empfehlung: ... Empfohlene Umleitung: ...
+```
+
+Dates are `dd.mm.yyyy` with an optional `HH:MM`. Note that the feed
+HTML-escapes its text (`&lt;-&gt;`) and separates clauses with **non-breaking
+spaces**; both are normalised before matching.
+
+**Closure type vocabulary** (the `Sachlage:` clause, matched as a substring):
+`baustelle`, `bauarbeiten` → construction; `unfall` → accident;
+`veranstaltung` → event; `unterhalt` → maintenance; `witterung` → weather.
+
+**Notes:**
+- An unrecognised `Sachlage` falls back to `other` with a logged warning rather
+  than failing the record. An unparseable or missing `Dauer:` clause **does**
+  fail the record — a closure window is not something to guess.
+- Feed timestamps carry no timezone and are treated as UTC.
+- Failures are reported per-feature in `errors` without blocking the batch.
+  Deleted records are reported in `skipped_count`, not `failed_count`.
+
+**Known limitations** — this is a **skeleton**, validated against synthetic
+data (`backend/tests/fixtures/ost_closures.json`) plus one real sample. Three
+things need resolving before it is production-ready:
+
+1. **No stable per-closure identifier exists.** No `id`-like field appears
+   anywhere in the sample. Without one, deduplication and update/delete
+   handling are impossible — which also makes `is_deleted` unactionable beyond
+   skipping. **Open question for OST / Lukas Buchli.** No synthetic ID is
+   invented here, since a wrong identity is worse than none.
+2. **Geometry comes from the feed's precomputed `geometry` field.** The
+   authoritative location reference is `osm_routepoints` (ordered OSM node IDs)
+   plus the signed `osm_start_node_offset_m` / `osm_end_node_offset_m` metre
+   offsets. Resolving those via Overpass is separate infrastructure work and is
+   **not** done here; the current geometry is whatever OST's prealigner
+   precomputed.
+3. **Type and date extraction are regex-based best-effort against free text**,
+   not structured fields, and the vocabulary table is built from a single real
+   record. Both need revisiting as more samples arrive, or replacing outright
+   if OST ever exposes structured fields.
 
 ## Attribution Requirements
 

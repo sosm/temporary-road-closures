@@ -1,0 +1,95 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "comment:de": "Freigegeben: Bahnhofstrasse 12, 8001 Zürich, Switzerland &lt;-&gt; Bahnhofstrasse 24, 8001 Zürich, Switzerland  Sachlage: Verkehrsbehinderung Baustelle Dauer:  voraussichtlich 24.08.2026 07:00 bis 11.09.2026 17:30 Empfehlung: eine lokale Umleitung ist eingerichtet Empfohlene Umleitung: lokale Umleitung",
+        "comment:fr": "Libéré: Bahnhofstrasse 12, 8001 Zürich, Switzerland &lt;-&gt; Bahnhofstrasse 24, 8001 Zürich, Switzerland  Situation: trafic perturbé travaux Durée:  probable 24.08.2026 07:00 jusqu'à 11.09.2026 17:30 Recommandation: une déviation locale est en place Déviation recommandée: Déviation locale",
+        "comment:it": "Approvato: Bahnhofstrasse 12, 8001 Zürich, Switzerland &lt;-&gt; Bahnhofstrasse 24, 8001 Zürich, Switzerland  Situazione: problemi di traffico cantiere Durata:  probabile 24.08.2026 07:00 fino 11.09.2026 17:30 Raccomandazione: seguire deviazione locale Deviazione raccomandata: Deviazione locale",
+        "osm_routepoints": [451198454, 451198455, 451198456],
+        "osm_start_node_offset_m": 25,
+        "osm_end_node_offset_m": -100,
+        "is_deleted": false
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [8.5410, 47.3760],
+          [8.5430, 47.3770],
+          [8.5450, 47.3780]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "comment:de": "Gesperrt: Limmatquai 4, 8001 Zürich, Switzerland &lt;-&gt; Limmatquai 18, 8001 Zürich, Switzerland  Sachlage: Verkehrsbehinderung Gleisersatzarbeiten Dauer:  voraussichtlich 05.09.2026 06:00 bis 07.09.2026 23:00 Empfehlung: eine lokale Umleitung ist eingerichtet Empfohlene Umleitung: lokale Umleitung",
+        "comment:fr": "Fermé: Limmatquai 4, 8001 Zürich, Switzerland &lt;-&gt; Limmatquai 18, 8001 Zürich, Switzerland  Situation: trafic perturbé remplacement des voies Durée:  probable 05.09.2026 06:00 jusqu'à 07.09.2026 23:00 Recommandation: une déviation locale est en place Déviation recommandée: Déviation locale",
+        "comment:it": "Chiuso: Limmatquai 4, 8001 Zürich, Switzerland &lt;-&gt; Limmatquai 18, 8001 Zürich, Switzerland  Situazione: problemi di traffico sostituzione binari Durata:  probabile 05.09.2026 06:00 fino 07.09.2026 23:00 Raccomandazione: seguire deviazione locale Deviazione raccomandata: Deviazione locale",
+        "osm_routepoints": [451198460, 451198461],
+        "osm_start_node_offset_m": 0,
+        "osm_end_node_offset_m": -40,
+        "is_deleted": false
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [8.5405, 47.3755],
+          [8.5425, 47.3765]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "comment:de": "Freigegeben: Seefeldstrasse 3, 8008 Zürich, Switzerland &lt;-&gt; Seefeldstrasse 21, 8008 Zürich, Switzerland  Sachlage: Verkehrsbehinderung Baustelle Dauer:  voraussichtlich 01.10.2026 08:00 bis 15.10.2026 18:00 Empfehlung: eine lokale Umleitung ist eingerichtet Empfohlene Umleitung: lokale Umleitung",
+        "comment:fr": "Libéré: Seefeldstrasse 3, 8008 Zürich, Switzerland &lt;-&gt; Seefeldstrasse 21, 8008 Zürich, Switzerland  Situation: trafic perturbé travaux Durée:  probable 01.10.2026 08:00 jusqu'à 15.10.2026 18:00 Recommandation: une déviation locale est en place Déviation recommandée: Déviation locale",
+        "comment:it": "Approvato: Seefeldstrasse 3, 8008 Zürich, Switzerland &lt;-&gt; Seefeldstrasse 21, 8008 Zürich, Switzerland  Situazione: problemi di traffico cantiere Durata:  probabile 01.10.2026 08:00 fino 15.10.2026 18:00 Raccomandazione: seguire deviazione locale Deviazione raccomandata: Deviazione locale",
+        "osm_routepoints": [451198470, 451198471],
+        "osm_start_node_offset_m": 10,
+        "osm_end_node_offset_m": -10,
+        "is_deleted": true
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [8.5408, 47.3758],
+          [8.5428, 47.3768]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "comment:de": "Freigegeben: Universitätstrasse 5, 8006 Zürich, Switzerland &lt;-&gt; Universitätstrasse 40, 8006 Zürich, Switzerland  Sachlage: Verkehrsbehinderung Baustelle Dauer:  bis auf Weiteres Empfehlung: eine lokale Umleitung ist eingerichtet Empfohlene Umleitung: lokale Umleitung",
+        "comment:fr": "Libéré: Universitätstrasse 5, 8006 Zürich, Switzerland &lt;-&gt; Universitätstrasse 40, 8006 Zürich, Switzerland  Situation: trafic perturbé travaux Durée:  jusqu'à nouvel ordre Recommandation: une déviation locale est en place Déviation recommandée: Déviation locale",
+        "comment:it": "Approvato: Universitätstrasse 5, 8006 Zürich, Switzerland &lt;-&gt; Universitätstrasse 40, 8006 Zürich, Switzerland  Situazione: problemi di traffico cantiere Durata:  fino a nuovo avviso Raccomandazione: seguire deviazione locale Deviazione raccomandata: Deviazione locale",
+        "osm_routepoints": [451198480, 451198481],
+        "osm_start_node_offset_m": 5,
+        "osm_end_node_offset_m": -5,
+        "is_deleted": false
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [8.5412, 47.3764],
+          [8.5432, 47.3774]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "comment:de": "Freigegeben: Langstrasse 2, 8004 Zürich, Switzerland &lt;-&gt; Langstrasse 30, 8004 Zürich, Switzerland  Sachlage: Verkehrsbehinderung Baustelle Dauer:  voraussichtlich 20.08.2026 07:00 bis 22.08.2026 17:00 Empfehlung: eine lokale Umleitung ist eingerichtet Empfohlene Umleitung: lokale Umleitung",
+        "comment:fr": "Libéré: Langstrasse 2, 8004 Zürich, Switzerland &lt;-&gt; Langstrasse 30, 8004 Zürich, Switzerland  Situation: trafic perturbé travaux Durée:  probable 20.08.2026 07:00 jusqu'à 22.08.2026 17:00 Recommandation: une déviation locale est en place Déviation recommandée: Déviation locale",
+        "comment:it": "Approvato: Langstrasse 2, 8004 Zürich, Switzerland &lt;-&gt; Langstrasse 30, 8004 Zürich, Switzerland  Situazione: problemi di traffico cantiere Durata:  probabile 20.08.2026 07:00 fino 22.08.2026 17:00 Raccomandazione: seguire deviazione locale Deviazione raccomandata: Deviazione locale",
+        "osm_routepoints": [451198490, 451198491],
+        "osm_start_node_offset_m": 0,
+        "osm_end_node_offset_m": 0,
+        "is_deleted": false
+      },
+      "geometry": null
+    }
+  ]
+}
