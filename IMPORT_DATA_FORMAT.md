@@ -11,6 +11,7 @@ The system supports importing closure data from the following formats:
 3. **Waze** - Waze Traffic API format
 4. **HERE** - HERE Traffic API format
 5. **TomTom** - TomTom Traffic API format
+6. **OST** - OST prealigner GeoJSON feed (skeleton)
 
 ## API Endpoint
 
@@ -21,7 +22,7 @@ POST /api/v1/import/
 
 **Parameters:**
 - `file` (required): File upload containing the data
-- `format` (required): Data format (geojson, csv, waze, here, tomtom)
+- `format` (required): Data format (geojson, csv, waze, here, tomtom, ost)
 - `attribution` (required): Attribution string for the data source
 - `source` (required): Name of the data source
 - `data_license` (optional): License under which the data is provided
@@ -35,10 +36,17 @@ POST /api/v1/import/
   "total_records": 100,
   "imported_count": 95,
   "failed_count": 5,
+  "skipped_count": 0,
+  "updated_count": 0,
+  "deactivated_count": 0,
   "errors": ["Row 10: Invalid geometry", ...],
   "closure_ids": [1, 2, 3, ...]
 }
 ```
+
+`skipped_count`, `updated_count` and `deactivated_count` are only non-zero for
+sources with deleted-record or stable-ID handling (currently OST, see below).
+`closure_ids` lists newly created closures only.
 
 ### Get CSV Template
 ```
@@ -226,6 +234,126 @@ TomTom Traffic API incidents can be imported:
 **Notes:**
 - Uses standard GeoJSON geometry
 - Transport mode defaults to `all`
+
+### 6. OST Data Format
+
+The OST (Ostschweizer Fachhochschule) prealigner feed is a standard GeoJSON
+`FeatureCollection`. Unlike the other supported sources it carries **no
+structured closure-type or date fields** — both are embedded in translated
+free text:
+
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "situation_id": "situation.287191.1.1.1",
+        "comment:de": "Freigegeben: Via Cartiera 8, 6598 Tenero-Contra, Switzerland &lt;-&gt; Via Cartiera 10, 6598 Tenero-Contra, Switzerland  Sachlage: Verkehrsbehinderung Baustelle Dauer:  voraussichtlich 23.10.2023 07:00 bis 29.03.2024 17:30 Empfehlung: eine lokale Umleitung ist eingerichtet Empfohlene Umleitung: lokale Umleitung",
+        "comment:fr": "Libéré: ... Situation: ... Durée: ...",
+        "comment:it": "Approvato: ... Situazione: ... Durata: ...",
+        "osm_routepoints": [451198454, 451198455, 451198456],
+        "osm_start_node_offset_m": 25,
+        "osm_end_node_offset_m": -100,
+        "is_deleted": false
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[8.817322, 47.2241366], [8.8184365, 47.2240262]]
+      }
+    }
+  ]
+}
+```
+
+**Field mapping:**
+
+| Feed field | Maps to | Notes |
+|---|---|---|
+| `comment:de` → `Sachlage:` clause | `closure_type` | regex, via `OST_SACHLAGE_TYPE_MAP` |
+| `comment:de` → `Dauer:` clause | `start_time` / `end_time` | regex; unparseable fails the record |
+| `comment:de` → status + location | `description` | HTML-unescaped |
+| `geometry` | `geometry` | precomputed convenience field, see below |
+| `situation_id` ⚠ | `external_id` | stable per-closure ID; **property name unconfirmed**, see below |
+| `is_deleted` | — | `true` cancels the matching closure, else skips; see below |
+| `osm_routepoints`, `osm_*_offset_m` | *(unused)* | authoritative reference, not yet resolved |
+| *(no field)* | `transport_mode` | always `all`; the feed has no mode field |
+
+**Identity and re-imports.** OST has confirmed the feed will carry a stable
+traffic situation ID (e.g. `situation.287191.1.1.1`) that survives updates to
+the same real-world closure. No sample containing it has been seen yet, so the
+property name `situation_id` is a **placeholder**: it is defined once as
+`OST_SITUATION_ID_PROPERTY` in `backend/app/services/import_service.py`, and
+the fixture and tests follow it. The ID is stored as `closures.external_id`,
+unique per `source` (migration `004`). Each record is handled as:
+
+| Record | Match on (`source`, ID)? | Outcome | Counted in |
+|---|---|---|---|
+| has ID, not deleted | yes | existing closure updated in place, OpenLR re-encoded | `updated_count` |
+| has ID, not deleted | no | new closure created | `imported_count` |
+| has ID, `is_deleted: true` | yes, not yet cancelled | status set to `cancelled` | `deactivated_count` |
+| has ID, `is_deleted: true` | no, or already cancelled | nothing | `skipped_count` |
+| no ID, not deleted | — | new closure created (re-imports duplicate) | `imported_count` |
+| no ID, `is_deleted: true` | — | nothing | `skipped_count` |
+
+- A deleted record is **cancelled, not deleted**, matching the existing
+  status convention for a closure that ended early; history is kept.
+- A cancelled closure **stays cancelled** even if its record later returns
+  with `is_deleted: false`. Its fields are still refreshed.
+- Updates **never clear a field**. If OST drops an optional value, the old
+  one stays.
+- Updates and cancellations go through the normal closure update path, so the
+  **importing user must be a moderator or the closure's original submitter**.
+  Otherwise that record fails with a permission error.
+- Matching is scoped by the `source` form field: import the feed under the
+  same `source` every time, or it will create new closures.
+- `closure_ids` lists created closures only.
+
+**The `comment:de` grammar.** The German comment is the one parsed —
+`comment:fr` / `comment:it` are the same record translated, and German is
+OST's primary language for this data. Its clause structure is:
+
+```
+<Status>: <address> <-> <address>  Sachlage: <cause> Dauer: <qualifier> <start> bis <end> Empfehlung: ... Empfohlene Umleitung: ...
+```
+
+Dates are `dd.mm.yyyy` with an optional `HH:MM`. Note that the feed
+HTML-escapes its text (`&lt;-&gt;`) and separates clauses with **non-breaking
+spaces**; both are normalised before matching.
+
+**Closure type vocabulary** (the `Sachlage:` clause, matched as a substring):
+`baustelle`, `bauarbeiten` → construction; `unfall` → accident;
+`veranstaltung` → event; `unterhalt` → maintenance; `witterung` → weather.
+
+**Notes:**
+- An unrecognised `Sachlage` falls back to `other` with a logged warning rather
+  than failing the record. An unparseable or missing `Dauer:` clause **does**
+  fail the record — a closure window is not something to guess.
+- Feed timestamps carry no timezone and are treated as UTC.
+- Failures are reported per-feature in `errors` without blocking the batch.
+  Deleted records are never parsed and never count as `failed_count`.
+
+**Known limitations** — this is a **skeleton**, validated against synthetic
+data (`backend/tests/fixtures/ost_closures.json`) plus one real sample. Three
+things need resolving before it is production-ready:
+
+1. **The ID property name is unconfirmed.** OST has committed to a stable
+   situation ID, but the real sample predates it. Until it ships, records carry
+   no ID and import exactly as before (no dedup, deleted records skipped).
+   Confirm the name against the first sample and change
+   `OST_SITUATION_ID_PROPERTY`. No synthetic ID is invented in the meantime,
+   since a wrong identity is worse than none.
+2. **Geometry comes from the feed's precomputed `geometry` field.** The
+   authoritative location reference is `osm_routepoints` (ordered OSM node IDs)
+   plus the signed `osm_start_node_offset_m` / `osm_end_node_offset_m` metre
+   offsets. Resolving those via Overpass is separate infrastructure work and is
+   **not** done here; the current geometry is whatever OST's prealigner
+   precomputed.
+3. **Type and date extraction are regex-based best-effort against free text**,
+   not structured fields, and the vocabulary table is built from a single real
+   record. Both need revisiting as more samples arrive, or replacing outright
+   if OST ever exposes structured fields.
 
 ## Attribution Requirements
 

@@ -3,20 +3,63 @@ Service for importing 3rd party closure data.
 """
 
 from sqlalchemy.orm import Session
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
 import json
 import csv
+import html
 import io
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 import logging
 
 from app.schemas.import_data import ImportFormat, ImportOptions, ImportResult
-from app.schemas.closure import ClosureCreate, GeoJSONGeometry
-from app.models.closure import ClosureType, TransportMode
+from app.schemas.closure import ClosureCreate, ClosureUpdate, GeoJSONGeometry
+from app.models.closure import Closure, ClosureStatus, ClosureType, TransportMode
+from app.models.user import User
 from app.services.closure_service import ClosureService
 from app.core.exceptions import ValidationException
 
 logger = logging.getLogger(__name__)
+
+# No structured type field exists; the cause sits in the free-text "Sachlage:"
+# clause, matched here as a lowercased substring. Only "baustelle" is observed
+# vocabulary -- the one real sample we have. The rest are plausible German
+# guesses so early unseen records degrade sensibly, and the whole table wants
+# rebuilding once OST supplies a proper corpus.
+OST_SACHLAGE_TYPE_MAP = {
+    "baustelle": ClosureType.CONSTRUCTION,
+    "bauarbeiten": ClosureType.CONSTRUCTION,
+    "unfall": ClosureType.ACCIDENT,
+    "veranstaltung": ClosureType.EVENT,
+    "unterhalt": ClosureType.MAINTENANCE,
+    "witterung": ClosureType.WEATHER,
+}
+
+OST_DEFAULT_CLOSURE_TYPE = ClosureType.OTHER
+
+# The feed has no affected-modes field at all, so every OST closure lands as ALL
+# until OST exposes one.
+OST_DEFAULT_TRANSPORT_MODE = TransportMode.ALL
+
+# OST confirmed the feed will carry a stable traffic situation ID, e.g.
+# "situation.287191.1.1.1", but no sample has shown it yet, so this property
+# NAME IS UNCONFIRMED. Change it here only.
+OST_SITUATION_ID_PROPERTY = "situation_id"
+
+# comment:de reads:
+#   "<Status>: <address> <-> <address>  Sachlage: <cause> Dauer: <qualifier>
+#    <start> bis <end> Empfehlung: ... Empfohlene Umleitung: ..."
+# The leading clause label varies with status ("Freigegeben:", ...), so the
+# location pattern anchors on "Sachlage:" rather than on a fixed word.
+_OST_LOCATION_RE = re.compile(r"^([^:]+):\s*(.+?)\s+Sachlage:")
+_OST_SACHLAGE_RE = re.compile(r"Sachlage:\s*(.+?)\s+Dauer:")
+
+# "23.10.2023 07:00", time optional. The qualifier between "Dauer:" and the
+# first date ("voraussichtlich") is deliberately skipped, not captured.
+_OST_DATETIME = r"(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2}))?"
+_OST_DAUER_RE = re.compile(
+    rf"Dauer:.*?{_OST_DATETIME}\s+bis\s+{_OST_DATETIME}"
+)
 
 
 class ImportService:
@@ -67,6 +110,9 @@ class ImportService:
         elif options.format == ImportFormat.TOMTOM:
             data = json.loads(text_content)
             return self.import_tomtom_data(data, options, user_id)
+        elif options.format == ImportFormat.OST:
+            data = json.loads(text_content)
+            return self.import_ost_data(data, options, user_id)
         else:
             raise ValidationException(f"Unsupported format: {options.format}")
 
@@ -312,6 +358,130 @@ class ImportService:
             closure_ids=closure_ids,
         )
 
+    def import_ost_data(
+        self, data: Dict[str, Any], options: ImportOptions, user_id: int
+    ) -> ImportResult:
+        """
+        Import closure data from the OST prealigner GeoJSON feed.
+
+        A record carrying a situation ID that matches an earlier import of the
+        same ``options.source`` updates (or, if deleted, cancels) that closure
+        through ClosureService.update_closure, so the importing user needs edit
+        rights on it. Records without an ID are always created.
+
+        Args:
+            data: GeoJSON FeatureCollection from the OST feed
+            options: Import options
+            user_id: User ID
+
+        Returns:
+            ImportResult: Import result
+        """
+        if data.get("type") != "FeatureCollection":
+            raise ValidationException("OST feed must be a FeatureCollection")
+
+        features = data.get("features", [])
+        total_records = len(features)
+        imported_count = 0
+        updated_count = 0
+        deactivated_count = 0
+        failed_count = 0
+        skipped_count = 0
+        errors = []
+        closure_ids = []
+        user = None  # loaded on first update; update_closure needs the User
+
+        for idx, feature in enumerate(features):
+            try:
+                properties = feature.get("properties") or {}
+                external_id = self._ost_situation_id(properties)
+                existing = (
+                    self._find_imported_closure(options.source, external_id)
+                    if external_id
+                    else None
+                )
+
+                # Deleted records are never parsed: there is nothing to build.
+                # Without an ID or a match there is nothing to act on either.
+                if properties.get("is_deleted"):
+                    if existing and existing.status != ClosureStatus.CANCELLED.value:
+                        user = user or self._import_user(user_id)
+                        self.closure_service.update_closure(
+                            existing.id,
+                            ClosureUpdate(status=ClosureStatus.CANCELLED),
+                            user,
+                        )
+                        deactivated_count += 1
+                    else:
+                        skipped_count += 1
+                    continue
+
+                closure_data = self._create_closure_from_ost_feature(feature, options)
+
+                if existing:
+                    # exclude_none: update_closure applies every *set* key, so an
+                    # explicit None would wipe a stored value. Status is left
+                    # alone, so a cancelled closure stays cancelled.
+                    user = user or self._import_user(user_id)
+                    self.closure_service.update_closure(
+                        existing.id,
+                        ClosureUpdate(**closure_data.model_dump(exclude_none=True)),
+                        user,
+                    )
+                    updated_count += 1
+                    continue
+
+                closure = self.closure_service.create_closure(
+                    closure_data, user_id, external_id=external_id
+                )
+                closure_ids.append(closure.id)
+                imported_count += 1
+
+            except Exception as e:
+                # ClosureService already rolls back its own failures (e.g. a
+                # unique-index IntegrityError); this also covers the lookup, so
+                # the next record never inherits an aborted transaction.
+                self.db.rollback()
+                failed_count += 1
+                error_msg = f"Feature {idx}: {str(e)}"
+                errors.append(error_msg)
+                logger.warning(f"Failed to import OST feature {idx}: {str(e)}")
+
+        return ImportResult(
+            success=failed_count == 0,
+            total_records=total_records,
+            imported_count=imported_count,
+            updated_count=updated_count,
+            deactivated_count=deactivated_count,
+            failed_count=failed_count,
+            skipped_count=skipped_count,
+            errors=errors,
+            closure_ids=closure_ids,
+        )
+
+    def _ost_situation_id(self, properties: Dict[str, Any]) -> Optional[str]:
+        """The record's stable ID, or None when absent or blank."""
+        value = properties.get(OST_SITUATION_ID_PROPERTY)
+        if value is None:
+            return None
+        return str(value).strip() or None
+
+    def _find_imported_closure(
+        self, source: str, external_id: str
+    ) -> Optional[Closure]:
+        """The closure previously imported for this (source, external_id)."""
+        return (
+            self.db.query(Closure)
+            .filter(Closure.source == source, Closure.external_id == external_id)
+            .first()
+        )
+
+    def _import_user(self, user_id: int) -> User:
+        user = self.db.get(User, user_id)
+        if user is None:
+            raise ValueError(f"Importing user {user_id} not found")
+        return user
+
     def _create_closure_from_geojson_feature(
         self, geometry: Dict[str, Any], properties: Dict[str, Any], options: ImportOptions
     ) -> ClosureCreate:
@@ -497,6 +667,144 @@ class ImportService:
             attribution=options.attribution,
             data_license=options.data_license,
         )
+
+    def _create_closure_from_ost_feature(
+        self, feature: Dict[str, Any], options: ImportOptions
+    ) -> ClosureCreate:
+        """Create ClosureCreate from an OST prealigner feature."""
+        properties = feature.get("properties") or {}
+
+        # comment:fr / comment:it carry the same record translated. Only the
+        # German is parsed: it is OST's primary language for this data, so its
+        # phrasing is the least likely to be a lossy translation.
+        comment = self._normalise_ost_comment(properties.get("comment:de"))
+        if not comment:
+            raise ValueError("Missing required field: comment:de")
+
+        # Geometry is the feed's precomputed convenience LineString. The
+        # authoritative location reference is osm_routepoints plus
+        # osm_start_node_offset_m / osm_end_node_offset_m; resolving those via
+        # Overpass is separate infrastructure work and is NOT done here.
+        geometry_data = feature.get("geometry") or {}
+        coordinates = geometry_data.get("coordinates")
+        if not coordinates:
+            raise ValueError("No geometry in OST feature")
+        if geometry_data.get("type") != "LineString":
+            raise ValueError(
+                f"Unsupported OST geometry type: {geometry_data.get('type')}"
+            )
+        if len(coordinates) < 2:
+            raise ValueError("LineString needs at least 2 coordinates")
+
+        start_time, end_time = self._parse_ost_duration(comment)
+
+        return ClosureCreate(
+            geometry=GeoJSONGeometry(type="LineString", coordinates=coordinates),
+            description=self._ost_description(comment),
+            closure_type=self._map_ost_sachlage(comment),
+            start_time=start_time,
+            end_time=end_time,
+            source=options.source,
+            confidence_level=options.default_confidence,
+            is_bidirectional=True,
+            transport_mode=OST_DEFAULT_TRANSPORT_MODE,
+            attribution=options.attribution,
+            data_license=options.data_license,
+        )
+
+    def _normalise_ost_comment(self, raw: Any) -> str:
+        """
+        Flatten a comment string before regex matching.
+
+        The feed HTML-escapes its text ("&lt;-&gt;") and separates clauses with
+        non-breaking spaces, so unescape and collapse both before parsing.
+        """
+        if not raw:
+            return ""
+        text = html.unescape(str(raw)).replace("\xa0", " ")
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _parse_ost_duration(self, comment: str) -> Tuple[datetime, datetime]:
+        """
+        Extract the closure window from the comment's "Dauer:" clause.
+
+        There is no structured date field, so an unmatched or nonsensical clause
+        fails the record rather than guessing a window. Both ends are required:
+        the clause always spells out "<start> bis <end>".
+        """
+        match = _OST_DAUER_RE.search(comment)
+        if not match:
+            raise ValueError("Cannot parse OST duration: no 'Dauer:' clause found")
+
+        try:
+            start = self._ost_datetime(*match.group(1, 2, 3, 4, 5))
+            end = self._ost_datetime(*match.group(6, 7, 8, 9, 10))
+        except ValueError as e:
+            raise ValueError(f"Cannot parse OST duration: {e}")
+
+        if end <= start:
+            raise ValueError("Cannot parse OST duration: end is not after start")
+        return start, end
+
+    def _ost_datetime(
+        self, day: str, month: str, year: str, hour: str, minute: str
+    ) -> datetime:
+        """
+        Build a UTC datetime from the feed's dd.mm.yyyy [HH:MM] groups.
+
+        The feed states no timezone. Treating it as UTC matches the rest of the
+        importer, but OST is Swiss (UTC+1/+2) -- confirm before relying on these
+        times to the hour.
+        """
+        return datetime(
+            int(year),
+            int(month),
+            int(day),
+            int(hour or 0),
+            int(minute or 0),
+            tzinfo=timezone.utc,
+        )
+
+    def _map_ost_sachlage(self, comment: str) -> ClosureType:
+        """Map the comment's free-text "Sachlage:" clause to a ClosureType."""
+        match = _OST_SACHLAGE_RE.search(comment)
+        if not match:
+            logger.warning(
+                "No 'Sachlage:' clause in OST comment, defaulting to %s",
+                OST_DEFAULT_CLOSURE_TYPE.value,
+            )
+            return OST_DEFAULT_CLOSURE_TYPE
+
+        sachlage = match.group(1).lower()
+        for term, closure_type in OST_SACHLAGE_TYPE_MAP.items():
+            if term in sachlage:
+                return closure_type
+
+        logger.warning(
+            "Unknown OST Sachlage %r, defaulting to %s",
+            match.group(1),
+            OST_DEFAULT_CLOSURE_TYPE.value,
+        )
+        return OST_DEFAULT_CLOSURE_TYPE
+
+    def _ost_description(self, comment: str) -> str:
+        """
+        Build a description from the comment's status, location and cause.
+
+        Falls back to the whole comment: it is free text of unknown shape, and a
+        truncated original beats a synthesised placeholder.
+        """
+        location = _OST_LOCATION_RE.search(comment)
+        sachlage = _OST_SACHLAGE_RE.search(comment)
+
+        parts = []
+        if location:
+            parts.append(f"{location.group(1).strip()}: {location.group(2).strip()}")
+        if sachlage:
+            parts.append(sachlage.group(1).strip())
+
+        description = " - ".join(parts) if parts else comment
+        return description[:1000]
 
     def _parse_datetime(self, dt_str: str) -> datetime:
         """Parse datetime string."""

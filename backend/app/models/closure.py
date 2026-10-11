@@ -12,6 +12,8 @@ from sqlalchemy import (
     Enum,
     func,
     Boolean,
+    Index,
+    text,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, Session
@@ -82,6 +84,18 @@ class Closure(BaseModel):
 
     __tablename__ = "closures"
 
+    # Partial so closures without an external_id (user submissions, sources
+    # with no stable ID) never collide. Mirrors migrations/004.
+    __table_args__ = (
+        Index(
+            "uq_closures_source_external_id",
+            "source",
+            "external_id",
+            unique=True,
+            postgresql_where=text("external_id IS NOT NULL"),
+        ),
+    )
+
     id = Column(Integer, primary_key=True, index=True, doc="Unique closure identifier")
 
     # Geospatial data
@@ -138,6 +152,12 @@ class Closure(BaseModel):
 
     # Additional metadata
     source = Column(String(100), nullable=True, doc="Source of the closure information")
+
+    external_id = Column(
+        String(255),
+        nullable=True,
+        doc="Upstream record ID, unique per source; lets re-imports update in place",
+    )
 
     confidence_level = Column(
         Integer, nullable=True, doc="Confidence level of the closure information (1-10)"

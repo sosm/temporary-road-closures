@@ -46,13 +46,20 @@ class ClosureService:
         self.openlr_enabled = settings.OPENLR_ENABLED
         self.validate_roundtrip = settings.OPENLR_VALIDATE_ROUNDTRIP
 
-    def create_closure(self, closure_data: ClosureCreate, user_id: int) -> Closure:
+    def create_closure(
+        self,
+        closure_data: ClosureCreate,
+        user_id: int,
+        external_id: Optional[str] = None,
+    ) -> Closure:
         """
         Create a new closure with OpenLR encoding.
 
         Args:
             closure_data: Closure creation data
             user_id: ID of user creating the closure
+            external_id: Upstream record ID, set by importers only. A kwarg
+                rather than a ClosureCreate field so the public API can't set it.
 
         Returns:
             Closure: Created closure with OpenLR code
@@ -86,6 +93,7 @@ class ClosureService:
                 transport_mode=closure_data.transport_mode.value,
                 attribution=closure_data.attribution,
                 data_license=closure_data.data_license,
+                external_id=external_id,
                 submitter_id=user_id,
                 status=ClosureStatus.ACTIVE.value,
             )

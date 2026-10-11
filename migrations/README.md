@@ -28,6 +28,19 @@ docker exec -i osm-closures-db psql -U postgres -d osm_closures < migrations/001
 
 ## Migration History
 
+### 004_add_closure_external_id.sql (2026-10-11)
+
+**Purpose**: Deduplicate re-imported third-party closures by a stable upstream ID (first used by the OST feed)
+
+**Changes:**
+
+- Added nullable `external_id` column (VARCHAR(255))
+- Added partial unique index `uq_closures_source_external_id` on `(source, external_id) WHERE external_id IS NOT NULL`, so rows without an ID never collide
+
+**Rollback**: `004_add_closure_external_id_rollback.sql`
+
+**Note**: `create_all` at startup does not add columns to an existing table; run this against any existing database before deploying the OST dedup code.
+
 ### 003_widen_avatar_url_to_text.sql (2026-03-05)
 
 **Purpose**: Fix OAuth login failure caused by long avatar URLs (GitHub Issue #18)
