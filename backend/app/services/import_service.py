@@ -3,7 +3,7 @@ Service for importing 3rd party closure data.
 """
 
 from sqlalchemy.orm import Session
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 import json
 import csv
 import html
@@ -13,8 +13,9 @@ from datetime import datetime, timezone
 import logging
 
 from app.schemas.import_data import ImportFormat, ImportOptions, ImportResult
-from app.schemas.closure import ClosureCreate, GeoJSONGeometry
-from app.models.closure import ClosureType, TransportMode
+from app.schemas.closure import ClosureCreate, ClosureUpdate, GeoJSONGeometry
+from app.models.closure import Closure, ClosureStatus, ClosureType, TransportMode
+from app.models.user import User
 from app.services.closure_service import ClosureService
 from app.core.exceptions import ValidationException
 
@@ -39,6 +40,11 @@ OST_DEFAULT_CLOSURE_TYPE = ClosureType.OTHER
 # The feed has no affected-modes field at all, so every OST closure lands as ALL
 # until OST exposes one.
 OST_DEFAULT_TRANSPORT_MODE = TransportMode.ALL
+
+# OST confirmed the feed will carry a stable traffic situation ID, e.g.
+# "situation.287191.1.1.1", but no sample has shown it yet, so this property
+# NAME IS UNCONFIRMED. Change it here only.
+OST_SITUATION_ID_PROPERTY = "situation_id"
 
 # comment:de reads:
 #   "<Status>: <address> <-> <address>  Sachlage: <cause> Dauer: <qualifier>
@@ -358,6 +364,11 @@ class ImportService:
         """
         Import closure data from the OST prealigner GeoJSON feed.
 
+        A record carrying a situation ID that matches an earlier import of the
+        same ``options.source`` updates (or, if deleted, cancels) that closure
+        through ClosureService.update_closure, so the importing user needs edit
+        rights on it. Records without an ID are always created.
+
         Args:
             data: GeoJSON FeatureCollection from the OST feed
             options: Import options
@@ -372,26 +383,65 @@ class ImportService:
         features = data.get("features", [])
         total_records = len(features)
         imported_count = 0
+        updated_count = 0
+        deactivated_count = 0
         failed_count = 0
         skipped_count = 0
         errors = []
         closure_ids = []
+        user = None  # loaded on first update; update_closure needs the User
 
         for idx, feature in enumerate(features):
             try:
-                # A deleted record is well-formed input with nothing to create.
-                # Acting on it needs a stable per-closure id the feed does not
-                # publish -- see the OST section of IMPORT_DATA_FORMAT.md.
-                if (feature.get("properties") or {}).get("is_deleted"):
-                    skipped_count += 1
+                properties = feature.get("properties") or {}
+                external_id = self._ost_situation_id(properties)
+                existing = (
+                    self._find_imported_closure(options.source, external_id)
+                    if external_id
+                    else None
+                )
+
+                # Deleted records are never parsed: there is nothing to build.
+                # Without an ID or a match there is nothing to act on either.
+                if properties.get("is_deleted"):
+                    if existing and existing.status != ClosureStatus.CANCELLED.value:
+                        user = user or self._import_user(user_id)
+                        self.closure_service.update_closure(
+                            existing.id,
+                            ClosureUpdate(status=ClosureStatus.CANCELLED),
+                            user,
+                        )
+                        deactivated_count += 1
+                    else:
+                        skipped_count += 1
                     continue
 
                 closure_data = self._create_closure_from_ost_feature(feature, options)
-                closure = self.closure_service.create_closure(closure_data, user_id)
+
+                if existing:
+                    # exclude_none: update_closure applies every *set* key, so an
+                    # explicit None would wipe a stored value. Status is left
+                    # alone, so a cancelled closure stays cancelled.
+                    user = user or self._import_user(user_id)
+                    self.closure_service.update_closure(
+                        existing.id,
+                        ClosureUpdate(**closure_data.model_dump(exclude_none=True)),
+                        user,
+                    )
+                    updated_count += 1
+                    continue
+
+                closure = self.closure_service.create_closure(
+                    closure_data, user_id, external_id=external_id
+                )
                 closure_ids.append(closure.id)
                 imported_count += 1
 
             except Exception as e:
+                # ClosureService already rolls back its own failures (e.g. a
+                # unique-index IntegrityError); this also covers the lookup, so
+                # the next record never inherits an aborted transaction.
+                self.db.rollback()
                 failed_count += 1
                 error_msg = f"Feature {idx}: {str(e)}"
                 errors.append(error_msg)
@@ -401,11 +451,36 @@ class ImportService:
             success=failed_count == 0,
             total_records=total_records,
             imported_count=imported_count,
+            updated_count=updated_count,
+            deactivated_count=deactivated_count,
             failed_count=failed_count,
             skipped_count=skipped_count,
             errors=errors,
             closure_ids=closure_ids,
         )
+
+    def _ost_situation_id(self, properties: Dict[str, Any]) -> Optional[str]:
+        """The record's stable ID, or None when absent or blank."""
+        value = properties.get(OST_SITUATION_ID_PROPERTY)
+        if value is None:
+            return None
+        return str(value).strip() or None
+
+    def _find_imported_closure(
+        self, source: str, external_id: str
+    ) -> Optional[Closure]:
+        """The closure previously imported for this (source, external_id)."""
+        return (
+            self.db.query(Closure)
+            .filter(Closure.source == source, Closure.external_id == external_id)
+            .first()
+        )
+
+    def _import_user(self, user_id: int) -> User:
+        user = self.db.get(User, user_id)
+        if user is None:
+            raise ValueError(f"Importing user {user_id} not found")
+        return user
 
     def _create_closure_from_geojson_feature(
         self, geometry: Dict[str, Any], properties: Dict[str, Any], options: ImportOptions

@@ -108,8 +108,10 @@ docker-compose logs -f api
 # Run database initialization
 docker-compose exec api python scripts/init_db.py
 
-# # Or run migrations manually
-# docker-compose exec api alembic upgrade head
+# Existing databases: apply the SQL migrations in ../migrations/ in order
+# (create_all does not add new columns to existing tables), e.g.
+# docker exec -i osm_closures_db psql -U postgres -d osm_closures_dev \
+#   < ../migrations/004_add_closure_external_id.sql
 ```
 
 ### 4. Test the API
@@ -149,8 +151,8 @@ pip install -r requirements.txt
 export DATABASE_URL="postgresql://user:pass@localhost:5432/osm_closures_dev"
 export SECRET_KEY="your-secret-key"
 
-# Run migrations
-alembic upgrade head
+# Run migrations (raw SQL, no Alembic -- see ../migrations/README.md)
+psql "$DATABASE_URL" -f ../migrations/004_add_closure_external_id.sql
 
 # Start development server
 uvicorn app.main:app --reload
@@ -466,7 +468,7 @@ fixed in PR #127.
 tests/
 ├── conftest.py                     # Stubs the DB engine before app import
 ├── test_import_openlr.py           # Import path OpenLR regression (PR #127)
-├── test_import_ost.py              # OST prealigner feed import skeleton
+├── test_import_ost.py              # OST feed import: parsing, stable-ID dedup
 ├── test_openlr_integration.py      # OpenLR wiring inside ClosureService
 ├── test_openlr_service.py          # OpenLR service behaviour
 ├── test_openlr_translation.py      # FRC/FOW/LRP assembly
