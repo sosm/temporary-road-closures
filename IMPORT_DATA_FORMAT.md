@@ -36,10 +36,17 @@ POST /api/v1/import/
   "total_records": 100,
   "imported_count": 95,
   "failed_count": 5,
+  "skipped_count": 0,
+  "updated_count": 0,
+  "deactivated_count": 0,
   "errors": ["Row 10: Invalid geometry", ...],
   "closure_ids": [1, 2, 3, ...]
 }
 ```
+
+`skipped_count`, `updated_count` and `deactivated_count` are only non-zero for
+sources with deleted-record or stable-ID handling (currently OST, see below).
+`closure_ids` lists newly created closures only.
 
 ### Get CSV Template
 ```
@@ -242,6 +249,7 @@ free text:
     {
       "type": "Feature",
       "properties": {
+        "situation_id": "situation.287191.1.1.1",
         "comment:de": "Freigegeben: Via Cartiera 8, 6598 Tenero-Contra, Switzerland &lt;-&gt; Via Cartiera 10, 6598 Tenero-Contra, Switzerland  Sachlage: Verkehrsbehinderung Baustelle Dauer:  voraussichtlich 23.10.2023 07:00 bis 29.03.2024 17:30 Empfehlung: eine lokale Umleitung ist eingerichtet Empfohlene Umleitung: lokale Umleitung",
         "comment:fr": "Libéré: ... Situation: ... Durée: ...",
         "comment:it": "Approvato: ... Situazione: ... Durata: ...",
@@ -267,9 +275,40 @@ free text:
 | `comment:de` → `Dauer:` clause | `start_time` / `end_time` | regex; unparseable fails the record |
 | `comment:de` → status + location | `description` | HTML-unescaped |
 | `geometry` | `geometry` | precomputed convenience field, see below |
-| `is_deleted` | — | `true` skips the record (counted as skipped) |
+| `situation_id` ⚠ | `external_id` | stable per-closure ID; **property name unconfirmed**, see below |
+| `is_deleted` | — | `true` cancels the matching closure, else skips; see below |
 | `osm_routepoints`, `osm_*_offset_m` | *(unused)* | authoritative reference, not yet resolved |
 | *(no field)* | `transport_mode` | always `all`; the feed has no mode field |
+
+**Identity and re-imports.** OST has confirmed the feed will carry a stable
+traffic situation ID (e.g. `situation.287191.1.1.1`) that survives updates to
+the same real-world closure. No sample containing it has been seen yet, so the
+property name `situation_id` is a **placeholder**: it is defined once as
+`OST_SITUATION_ID_PROPERTY` in `backend/app/services/import_service.py`, and
+the fixture and tests follow it. The ID is stored as `closures.external_id`,
+unique per `source` (migration `004`). Each record is handled as:
+
+| Record | Match on (`source`, ID)? | Outcome | Counted in |
+|---|---|---|---|
+| has ID, not deleted | yes | existing closure updated in place, OpenLR re-encoded | `updated_count` |
+| has ID, not deleted | no | new closure created | `imported_count` |
+| has ID, `is_deleted: true` | yes, not yet cancelled | status set to `cancelled` | `deactivated_count` |
+| has ID, `is_deleted: true` | no, or already cancelled | nothing | `skipped_count` |
+| no ID, not deleted | — | new closure created (re-imports duplicate) | `imported_count` |
+| no ID, `is_deleted: true` | — | nothing | `skipped_count` |
+
+- A deleted record is **cancelled, not deleted**, matching the existing
+  status convention for a closure that ended early; history is kept.
+- A cancelled closure **stays cancelled** even if its record later returns
+  with `is_deleted: false`. Its fields are still refreshed.
+- Updates **never clear a field**. If OST drops an optional value, the old
+  one stays.
+- Updates and cancellations go through the normal closure update path, so the
+  **importing user must be a moderator or the closure's original submitter**.
+  Otherwise that record fails with a permission error.
+- Matching is scoped by the `source` form field: import the feed under the
+  same `source` every time, or it will create new closures.
+- `closure_ids` lists created closures only.
 
 **The `comment:de` grammar.** The German comment is the one parsed —
 `comment:fr` / `comment:it` are the same record translated, and German is
@@ -293,17 +332,18 @@ spaces**; both are normalised before matching.
   fail the record — a closure window is not something to guess.
 - Feed timestamps carry no timezone and are treated as UTC.
 - Failures are reported per-feature in `errors` without blocking the batch.
-  Deleted records are reported in `skipped_count`, not `failed_count`.
+  Deleted records are never parsed and never count as `failed_count`.
 
 **Known limitations** — this is a **skeleton**, validated against synthetic
 data (`backend/tests/fixtures/ost_closures.json`) plus one real sample. Three
 things need resolving before it is production-ready:
 
-1. **No stable per-closure identifier exists.** No `id`-like field appears
-   anywhere in the sample. Without one, deduplication and update/delete
-   handling are impossible — which also makes `is_deleted` unactionable beyond
-   skipping. **Open question for OST / Lukas Buchli.** No synthetic ID is
-   invented here, since a wrong identity is worse than none.
+1. **The ID property name is unconfirmed.** OST has committed to a stable
+   situation ID, but the real sample predates it. Until it ships, records carry
+   no ID and import exactly as before (no dedup, deleted records skipped).
+   Confirm the name against the first sample and change
+   `OST_SITUATION_ID_PROPERTY`. No synthetic ID is invented in the meantime,
+   since a wrong identity is worse than none.
 2. **Geometry comes from the feed's precomputed `geometry` field.** The
    authoritative location reference is `osm_routepoints` (ordered OSM node IDs)
    plus the signed `osm_start_node_offset_m` / `osm_end_node_offset_m` metre

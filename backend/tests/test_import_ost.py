@@ -4,9 +4,10 @@ Tests for the OST prealigner feed import skeleton.
 The feed publishes no structured type or date fields -- both are extracted
 best-effort by regex from the free-text comment:de clause -- so most of what
 is worth testing here is the parsing and its failure modes. Also covered:
-the deleted-record skip, the per-feature partial-success contract, and -- as
-with every other import source since PR #127 -- that an imported closure comes
-back with a real OpenLR code rather than NULL.
+stable-ID dedup (create / update / deactivate / skip), the per-feature
+partial-success contract, and -- as with every other import source since
+PR #127 -- that an imported or updated closure comes back with a real OpenLR
+code rather than NULL.
 
 Valhalla is mocked (mirroring test_valhalla_trace_service.py) so the suite
 runs without a live tile server.
@@ -20,10 +21,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.concurrency import run_in_threadpool
+from sqlalchemy.exc import IntegrityError
 
-from app.models.closure import ClosureType, TransportMode
+from app.models.closure import ClosureStatus, ClosureType, TransportMode
 from app.schemas.import_data import ImportFormat, ImportOptions
-from app.services.import_service import ImportService
+from app.services.import_service import OST_SITUATION_ID_PROPERTY, ImportService
 from app.services.valhalla_trace_service import MatchedEdge, TraceResult
 
 FIXTURE = Path(__file__).parent / "fixtures" / "ost_closures.json"
@@ -43,6 +45,11 @@ _COMMENT_DE = (
     "Empfehlung: eine lokale Umleitung ist eingerichtet "
     "Empfohlene Umleitung: lokale Umleitung"
 )
+
+
+# The ID property name is a placeholder until OST ships a sample carrying it;
+# tests (and the fixture's "situation_id" keys) follow OST_SITUATION_ID_PROPERTY.
+_SID = "situation.287191.1.1.1"
 
 
 def _feature(comment=_COMMENT_DE, geometry=..., **properties):
@@ -65,26 +72,49 @@ def _collection(*features):
     return {"type": "FeatureCollection", "features": list(features)}
 
 
-def _options():
+def _with_id(situation_id=_SID, **properties):
+    return _feature(**{OST_SITUATION_ID_PROPERTY: situation_id}, **properties)
+
+
+def _options(source="ost-prealigner"):
     return ImportOptions(
         format=ImportFormat.OST,
         attribution="OST - Ostschweizer Fachhochschule",
-        source="ost-prealigner",
+        source=source,
         default_confidence=7,
     )
 
 
-def _import_service(trace_result=TraceResult(edges=_EDGES)):
-    """See test_import_openlr._import_service -- same construction."""
+def _import_service(trace_result=TraceResult(edges=_EDGES), user=None):
+    """
+    See test_import_openlr._import_service -- same construction, plus an
+    in-memory store: the mocked DB would otherwise answer every lookup with a
+    truthy MagicMock. Committed closures (those refresh() gave an id) are found
+    by (source, external_id) and by id, as the real queries would.
+    """
     trace_service = MagicMock()
     trace_service.trace_attributes = AsyncMock(return_value=trace_result)
     service = ImportService(db=MagicMock())
     service.closure_service.openlr_service.trace_service = trace_service
 
     ids = itertools.count(1)
-    service.closure_service.db.refresh.side_effect = lambda obj: setattr(
-        obj, "id", next(ids)
+    # Only first refresh assigns an id; update_closure refreshes too.
+    service.closure_service.db.refresh.side_effect = lambda obj: (
+        obj.id or setattr(obj, "id", next(ids))
     )
+
+    def stored():
+        return [c for c in _created_closures(service) if c.id is not None]
+
+    service._find_imported_closure = lambda source, external_id: next(
+        (c for c in stored() if (c.source, c.external_id) == (source, external_id)),
+        None,
+    )
+    service.closure_service.get_closure_by_id = lambda closure_id: next(
+        c for c in stored() if c.id == closure_id
+    )
+    # The importing user (id 1) owns what it imported, so may edit it.
+    service.db.get.return_value = user or MagicMock(id=1, is_moderator=False)
     return service
 
 
@@ -92,14 +122,20 @@ def _created_closures(service):
     return [call.args[0] for call in service.closure_service.db.add.call_args_list]
 
 
-def _run_import(service, data):
+def _trace_calls(service):
+    return (
+        service.closure_service.openlr_service.trace_service.trace_attributes.call_args_list
+    )
+
+
+def _run_import(service, data, options=None):
     """Import the way the API handler does: from a loop, via the threadpool."""
 
     async def handler():
         return await run_in_threadpool(
             service.import_ost_data,
             data=data,
-            options=_options(),
+            options=options or _options(),
             user_id=1,
         )
 
@@ -382,7 +418,8 @@ def test_fixture_imports_with_the_expected_partial_success():
     """
     The shipped fixture is the live-verification payload: 2 importable records
     (one exercising the unknown-Sachlage fallback), 1 deleted, and 2 malformed
-    (open-ended duration, missing geometry).
+    (open-ended duration, missing geometry). Every record carries a situation
+    ID, so on a first import the deleted one has no match and is skipped.
     """
     service = _import_service()
     data = json.loads(FIXTURE.read_text())
@@ -418,3 +455,234 @@ def test_fixture_dispatches_through_import_data():
 
     assert result.imported_count == 2
     assert _created_closures(service)[0].openlr_code
+
+
+def test_fixture_reimport_creates_no_duplicates():
+    """The live check, in miniature: a second run only updates."""
+    service = _import_service()
+    data = json.loads(FIXTURE.read_text())
+
+    _run_import(service, data)
+    result = _run_import(service, data)
+
+    assert result.imported_count == 0
+    assert result.updated_count == 2
+    assert result.skipped_count == 1
+    assert result.failed_count == 2
+    assert result.closure_ids == []
+    assert len(_created_closures(service)) == 2
+    assert all(c.openlr_code for c in _created_closures(service))
+
+
+def test_fixture_records_all_carry_the_id_property():
+    """Keeps the fixture keys in step with OST_SITUATION_ID_PROPERTY."""
+    features = json.loads(FIXTURE.read_text())["features"]
+    ids = [f["properties"].get(OST_SITUATION_ID_PROPERTY) for f in features]
+    assert all(ids)
+    assert len(set(ids)) == len(ids)
+
+
+# --- stable-ID dedup --------------------------------------------------------
+
+
+def test_new_id_creates_and_stores_the_external_id():
+    service = _import_service()
+
+    result = _run_import(service, _collection(_with_id()))
+
+    assert result.imported_count == 1
+    closure = _created_closures(service)[0]
+    assert (closure.source, closure.external_id) == ("ost-prealigner", _SID)
+
+
+def test_reimport_with_the_same_id_updates_instead_of_creating():
+    service = _import_service()
+    _run_import(service, _collection(_with_id()))
+
+    result = _run_import(service, _collection(_with_id()))
+
+    assert result.imported_count == 0
+    assert result.updated_count == 1
+    assert result.failed_count == 0
+    assert result.success is True
+    assert len(_created_closures(service)) == 1
+
+
+def test_update_applies_the_new_record_to_the_same_closure():
+    service = _import_service()
+    _run_import(service, _collection(_with_id()))
+    original = _created_closures(service)[0]
+
+    _run_import(
+        service,
+        _collection(
+            _with_id(
+                comment=_with_dauer("01.09.2026 08:00 bis 30.09.2026 18:00"),
+            )
+        ),
+    )
+
+    assert original.start_time.day == 1 and original.start_time.month == 9
+    assert original.end_time.day == 30
+    assert original.external_id == _SID
+
+
+def test_update_does_not_wipe_stored_values_with_none():
+    """data_license is optional; a re-import omitting it must not null it."""
+    service = _import_service()
+    _run_import(service, _collection(_with_id()))
+    original = _created_closures(service)[0]
+    original.data_license = "ODbL"
+
+    _run_import(service, _collection(_with_id()))
+
+    assert original.data_license == "ODbL"
+
+
+def test_updated_ost_closure_gets_a_fresh_openlr_code():
+    """
+    The PR #127 regression on the update path: run via the threadpool with new
+    geometry and assert a real code, re-encoded with auto costing.
+    """
+    service = _import_service()
+    _run_import(service, _collection(_with_id()))
+    original = _created_closures(service)[0]
+    original.openlr_code = None
+    calls_before = len(_trace_calls(service))
+
+    moved = {"type": "LineString", "coordinates": _COORDS[:2]}
+    result = _run_import(service, _collection(_with_id(geometry=moved)))
+
+    assert result.updated_count == 1
+    assert original.openlr_code, (
+        "updated closure must carry an OpenLR code; None means map matching "
+        "was skipped by the event-loop deadlock guard"
+    )
+    new_calls = _trace_calls(service)[calls_before:]
+    assert new_calls, "update must re-encode through Valhalla"
+    assert {call.kwargs["costing"] for call in new_calls} == {"auto"}
+
+
+def test_deleted_record_with_a_match_is_deactivated():
+    service = _import_service()
+    _run_import(service, _collection(_with_id()))
+
+    result = _run_import(
+        service, _collection(_with_id(comment="nonsense", is_deleted=True))
+    )
+
+    assert result.deactivated_count == 1
+    assert result.skipped_count == 0
+    assert result.failed_count == 0
+    closure = _created_closures(service)[0]
+    assert closure.status == ClosureStatus.CANCELLED
+    assert len(_created_closures(service)) == 1
+
+
+def test_deleted_record_with_an_unknown_id_is_skipped():
+    service = _import_service()
+
+    result = _run_import(service, _collection(_with_id(is_deleted=True)))
+
+    assert result.skipped_count == 1
+    assert result.deactivated_count == 0
+    assert _created_closures(service) == []
+
+
+def test_deleting_an_already_cancelled_closure_is_skipped():
+    """A repeated feed is idempotent: the second delete has nothing to do."""
+    service = _import_service()
+    _run_import(service, _collection(_with_id()))
+    _run_import(service, _collection(_with_id(is_deleted=True)))
+
+    result = _run_import(service, _collection(_with_id(is_deleted=True)))
+
+    assert result.deactivated_count == 0
+    assert result.skipped_count == 1
+
+
+def test_a_cancelled_closure_stays_cancelled_when_its_record_returns():
+    service = _import_service()
+    _run_import(service, _collection(_with_id()))
+    _run_import(service, _collection(_with_id(is_deleted=True)))
+
+    result = _run_import(service, _collection(_with_id()))
+
+    assert result.updated_count == 1
+    assert _created_closures(service)[0].status == ClosureStatus.CANCELLED
+
+
+def test_the_same_id_under_another_source_is_a_different_closure():
+    service = _import_service()
+    _run_import(service, _collection(_with_id()))
+
+    result = _run_import(
+        service, _collection(_with_id()), options=_options(source="ost-other")
+    )
+
+    assert result.imported_count == 1
+    assert len(_created_closures(service)) == 2
+
+
+def test_records_without_an_id_never_look_up_and_always_create():
+    """Today's behaviour, unchanged: re-importing an ID-less record duplicates."""
+    service = _import_service()
+    service._find_imported_closure = MagicMock()
+
+    _run_import(service, _collection(_feature()))
+    result = _run_import(service, _collection(_feature()))
+
+    assert result.imported_count == 1
+    assert result.updated_count == 0
+    service._find_imported_closure.assert_not_called()
+    assert len(_created_closures(service)) == 2
+    assert all(c.external_id is None for c in _created_closures(service))
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_a_blank_id_is_treated_as_absent(blank):
+    service = _import_service()
+    _run_import(service, _collection(_with_id(blank)))
+
+    result = _run_import(service, _collection(_with_id(blank)))
+
+    assert result.imported_count == 1
+    assert _created_closures(service)[-1].external_id is None
+
+
+def test_update_without_edit_rights_fails_the_record():
+    """update_closure's permission check is reused, not bypassed."""
+    stranger = MagicMock(id=2, is_moderator=False)
+    service = _import_service(user=stranger)
+    _run_import(service, _collection(_with_id()))  # created as user 1
+
+    result = _run_import(service, _collection(_with_id(), _with_id("situation.2")))
+
+    assert result.updated_count == 0
+    assert result.imported_count == 1
+    assert result.failed_count == 1
+    assert "permission" in result.errors[0]
+
+
+def test_integrity_error_rolls_back_and_the_batch_continues():
+    """A unique-index race on one record must not poison the next one."""
+    service = _import_service()
+    commits = iter([IntegrityError("INSERT", {}, Exception("duplicate key"))])
+
+    def commit():
+        error = next(commits, None)
+        if error:
+            raise error
+
+    service.db.commit.side_effect = commit
+
+    result = _run_import(
+        service, _collection(_with_id("situation.1"), _with_id("situation.2"))
+    )
+
+    assert result.failed_count == 1
+    assert result.imported_count == 1
+    assert result.errors[0].startswith("Feature 0:")
+    assert "duplicate key" in result.errors[0]
+    assert service.db.rollback.called
+    assert _created_closures(service)[-1].external_id == "situation.2"
