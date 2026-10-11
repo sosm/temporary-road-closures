@@ -50,6 +50,11 @@ class ImportResult(BaseModel):
     # Distinct from failed_count: a record the feed marks as deleted is valid
     # input with nothing to do, not malformed data.
     skipped_count: int = Field(0, description="Number of records skipped, not failed")
+    # Re-imports matched to an existing closure by a stable upstream ID.
+    updated_count: int = Field(0, description="Number of existing closures updated")
+    deactivated_count: int = Field(
+        0, description="Number of existing closures cancelled by a deleted record"
+    )
     errors: List[str] = Field(default_factory=list, description="List of error messages")
     closure_ids: List[int] = Field(
         default_factory=list, description="IDs of created closures"
