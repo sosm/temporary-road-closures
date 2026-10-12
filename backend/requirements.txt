@@ -28,7 +28,7 @@ httpx==0.25.2
 
 # Geospatial processing
 shapely==2.0.2
-geojson==3.1.0
+geojson==3.3.0
 
 # OpenLR and location referencing
 openlr==1.0.1
