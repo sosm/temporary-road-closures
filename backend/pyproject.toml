@@ -22,7 +22,7 @@ PyJWT = "^2.8.0"
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 bcrypt = "3.2.0"
 python-multipart = ">=0.0.31"
-redis = "^5.0.1"
+redis = ">=5.0.1,<9.0.0"
 shapely = "^2.0.2"
 geojson = "^3.1.0"
 requests = "^2.32.3"
