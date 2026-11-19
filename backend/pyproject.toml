@@ -18,7 +18,7 @@ geoalchemy2 = "^0.14.2"
 psutil = "^5.9.6"
 pydantic = {extras = ["email"], version = "^2.5.0"}
 pydantic-settings = "^2.1.0"
-PyJWT = "^2.8.0"
+PyJWT = "^2.15.0"
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 bcrypt = "3.2.0"
 python-multipart = ">=0.0.31"
@@ -36,7 +36,7 @@ pyproj = "^3.6.1"
 pytest = "^7.4.3"
 pytest-asyncio = "^0.21.1"
 httpx = "^0.25.2"
-black = "^23.11.0"
+black = "^26.10.1"
 isort = "^5.12.0"
 flake8 = "^6.1.0"
 
