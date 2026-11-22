@@ -58,7 +58,7 @@ temporary-road-closures/
 └── README.md               # This file
 ```
 
-### 🛠️ Backend (Fully Implemented) ✅
+### 🛠️ Backend 
 
 **Complete FastAPI backend featuring:**
 
@@ -71,7 +71,7 @@ temporary-road-closures/
 
 [📖 **View Detailed Backend Documentation**](./backend/README.md)
 
-### 🎨 Frontend (Fully Implemented) ✅
+### 🎨 Frontend 
 
 **Complete Next.js web application featuring:**
 
@@ -85,7 +85,7 @@ temporary-road-closures/
 
 [📖 **View Detailed Frontend Documentation**](./frontend/README.md)
 
-### 🛣️ Closure-Aware Routing (Fully Implemented) ✅
+### 🛣️ Closure-Aware Routing 
 
 **Advanced routing system featuring:**
 
@@ -138,7 +138,7 @@ cd frontend
 npm install
 
 # Configure environment
-cp .env.example .env.local
+# create .env.local from example int README
 
 # Start development server
 npm run dev
