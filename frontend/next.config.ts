@@ -117,6 +117,9 @@ const nextConfig = {
 
   productionBrowserSourceMaps:
     process.env.NODE_ENV !== 'production',
+
+  allowedDevOrigins: ['172.16.3.2'],
+
 };
 
 module.exports = nextConfig;

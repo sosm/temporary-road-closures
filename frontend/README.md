@@ -67,7 +67,7 @@ The OSM Road Closures Frontend provides an intuitive, responsive web interface f
 
 ### Prerequisites
 
--   Node.js 18.0 or higher
+-   Node.js 26.0 or higher
 -   npm, yarn, or pnpm
 -   Backend API running (see [backend README](../backend/README.md))
 
