@@ -6,6 +6,8 @@ import 'leaflet/dist/leaflet.css';
 import { Info, RotateCcw } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
+import { PersistedMapView } from "@/components/Map/PersistedMapView";
+
 // Fix for default markers in react-leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -326,7 +328,6 @@ const RoutingMapComponent: React.FC<RoutingMapComponentProps> = ({
 
       <MapContainer center={mapCenter.center} zoom={mapCenter.zoom} className="h-full w-full" zoomControl={true}>
         <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        <MapViewController mapCenter={mapCenter} />
         <MapEventHandler
           sourcePoint={sourcePoint}
           destinationPoint={destinationPoint}
@@ -338,6 +339,7 @@ const RoutingMapComponent: React.FC<RoutingMapComponentProps> = ({
           onDestinationSelect={onDestinationSelect}
           mapCenter={mapCenter}
         />
+        <PersistedMapView mapCenter={mapCenter} />
       </MapContainer>
 
       {/* Map Legend: Ultra-Compact Circular Icon Button - Positioned top-left, perfectly stacked with zoom controls */}
