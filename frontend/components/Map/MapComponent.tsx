@@ -18,6 +18,8 @@ import { useLocationStatus } from '@/context/LocationContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
+import { PersistedMapView } from "@/components/Map/PersistedMapView";
+
 // Fix for default markers in react-leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -966,8 +968,6 @@ const MapComponent: React.FC<MapComponentProps> = ({
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
 
-                <MapViewController mapCenter={mapCenter} />
-
                 <MapEventHandler
                     onMapClick={onMapClick}
                     isSelecting={isSelecting}
@@ -976,6 +976,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
                     geometryType={geometryType}
                     mapCenter={mapCenter}
                 />
+                <PersistedMapView mapCenter={mapCenter} />
             </MapContainer>
 
 
