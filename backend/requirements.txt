@@ -20,7 +20,7 @@ pydantic-settings==2.14.2
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-multipart==0.0.31
-PyJWT==2.15.0
+PyJWT==2.15.1
 
 # Caching and async
 redis==5.0.1
