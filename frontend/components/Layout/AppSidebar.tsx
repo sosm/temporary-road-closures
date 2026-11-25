@@ -56,6 +56,11 @@ const navItems = [
     url: '/docs',
     icon: BookOpen,
   },
+  {
+    title: 'Privacy Policy',
+    url: '/privacy',
+    icon: ShieldCheck,
+  },
 ];
 
 export function AppSidebar() {
