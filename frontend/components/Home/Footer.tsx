@@ -16,6 +16,7 @@ const Footer: React.FC = () => {
         { href: '/', label: 'Home' },
         { href: '/closures', label: 'View Closures' },
         { href: '/docs', label: 'API Documentation', external: true },
+	{ href: '/privacy', label: 'Privacy Policy' },
         { href: 'https://github.com/sosm/temporary-road-closures', label: 'GitHub Repository', external: true }
     ];
 

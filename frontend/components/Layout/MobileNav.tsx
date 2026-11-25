@@ -90,6 +90,9 @@ export function MobileNav() {
                         <User className="mr-2 h-4 w-4" />
                         Profile
                       </button>
+                      <Link href="/privacy" className="w-full px-2 py-1.5 text-sm text-gray-700">
+                        Privacy Policy
+                      </Link>
                       
                       <button onClick={logout} className="w-full flex items-center px-2 py-1.5 rounded-md text-sm text-red-600 hover:bg-red-50 transition-colors">
                         <LogOut className="mr-2 h-4 w-4" />
@@ -109,6 +112,10 @@ export function MobileNav() {
                           <LogIn className="mr-2 h-4 w-4" />
                           Login to Report
                         </Button>
+                      </Link>
+
+		      <Link href="/privacy" className="block px-2 py-1.5 text-center text-sm text-gray-700">
+                        Privacy Policy
                       </Link>
                     </div>
                   )}
