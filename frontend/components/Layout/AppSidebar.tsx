@@ -214,7 +214,7 @@ export function AppSidebar() {
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
                       <span className="truncate font-bold tracking-tight text-gray-900">{user?.full_name || user?.username}</span>
-                      <span className="truncate text-xs text-gray-500">Editor</span>
+		      <span className="truncate text-xs text-gray-500">{user?.is_moderator ? 'Moderator' : 'Contributor'}</span>
                     </div>
                   </SidebarMenuButton>
                 </DropdownMenuTrigger>
