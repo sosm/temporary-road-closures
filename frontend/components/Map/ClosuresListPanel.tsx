@@ -26,6 +26,7 @@ const ClosuresListPanel: React.FC<ClosuresListPanelProps> = ({ isOpen, onClose, 
     const { state, selectClosure, startEditingClosure, canEditClosure, deleteClosure } = useClosures();
     const { closures, selectedClosure, loading, isAuthenticated, user, bboxTooLarge } = state;
     const isMobile = useIsMobile();
+    const [showExpired, setShowExpired] = React.useState(false);
 
     const getClosureStatus = (closure: Closure): 'active' | 'upcoming' | 'expired' => {
         const now = new Date();
@@ -111,6 +112,19 @@ const ClosuresListPanel: React.FC<ClosuresListPanelProps> = ({ isOpen, onClose, 
     const upcomingClosures = closures.filter(c => getClosureStatus(c) === 'upcoming').length;
     const expiredClosures = closures.filter(c => getClosureStatus(c) === 'expired').length;
 
+    const displayedClosures = [...closures]
+        .filter(closure =>
+            showExpired || getClosureStatus(closure) !== 'expired'
+        )
+        .sort((a, b) => {
+            const startDifference =
+                Date.parse(b.start_time) - Date.parse(a.start_time);
+
+            return startDifference !== 0
+                ? startDifference
+                : b.id - a.id;
+        });
+	
     // Calculate geometry statistics
     const pointClosures = closures.filter(c => c.geometry.type === 'Point').length;
     const lineStringClosures = closures.filter(c => c.geometry.type === 'LineString');
@@ -201,6 +215,21 @@ const ClosuresListPanel: React.FC<ClosuresListPanelProps> = ({ isOpen, onClose, 
     const renderClosuresList = () => (
         <div className={cn("flex-1 min-h-0 overflow-x-hidden scrollbar-thin", !isMobile && "overflow-y-auto")}>
             <div className="px-4 py-2">
+                <label className="mb-3 flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                    <input
+                        type="checkbox"
+                        checked={showExpired}
+                        onChange={event => setShowExpired(event.target.checked)}
+                        className="h-4 w-4 rounded border-border accent-primary"
+                    />
+                    <span>Show expired closures</span>
+                    {expiredClosures > 0 && (
+                        <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold">
+                            {expiredClosures}
+                        </span>
+                    )}
+                </label>
+
                 {loading ? (
                     <div className="space-y-3 py-4">
                         {[1, 2, 3, 4].map(i => (
@@ -236,16 +265,25 @@ const ClosuresListPanel: React.FC<ClosuresListPanelProps> = ({ isOpen, onClose, 
                             </div>
                         </div>
                     )
+                ) : displayedClosures.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <p className="font-bold text-muted-foreground">
+                            No active or upcoming closures
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground/60">
+                            Enable “Show expired closures” to include older entries.
+                        </p>
+                    </div>
                 ) : (
                     <div className="space-y-1.5 pb-8">
-                        {closures.map((closure, index) => {
+			{displayedClosures.map((closure, index) => {
                             const status = getClosureStatus(closure);
                             const isSelected = selectedClosure?.id === closure.id;
                             const directionIcon = getDirectionIcon(closure);
                             const geometryLabel = getGeometryLabel(closure);
                             const canEdit = canEditClosure(closure);
                             const GeometryIcon = getGeometryIcon(closure);
-                            const isLast = index === closures.length - 1;
+			    const isLast = index === displayedClosures.length - 1;
 
                             return (
                                 <React.Fragment key={closure.id}>
