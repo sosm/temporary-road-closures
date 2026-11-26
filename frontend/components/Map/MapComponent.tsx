@@ -729,11 +729,6 @@ function createClosurePopup(closure: Closure): string {
                     <div><strong>Start:</strong> ${formatDate(closure.start_time)}</div>
                     <div><strong>End:</strong> ${formatDate(closure.end_time)}</div>
                 </div>
-                ${closure.openlr_code ? `
-                    <div class="text-xs text-blue-600 mt-2">
-                        <strong>OpenLR:</strong> ${closure.openlr_code}
-                    </div>
-                ` : ''}
                 <div class="mt-3 pt-2" style="border-top:1px solid #e5e7eb">
                     <button
                         onclick="var btn=this; navigator.clipboard.writeText(window.location.origin+'/closures?highlight=${closure.id}').then(function(){btn.textContent='✓ Copied!';setTimeout(function(){btn.textContent='🔗 Copy link';},2000)}).catch(function(){});"
