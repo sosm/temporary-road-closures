@@ -17,6 +17,8 @@ const transportationIcons = {
 } as const;
 
 const ClosuresList: React.FC<ClosuresListProps> = ({ closures, transportationMode }) => {
+    const [showExpired, setShowExpired] = React.useState(false);
+
     const getClosureTypeIcon = (type: string) => {
         switch (type) {
             case 'construction':
@@ -100,6 +102,30 @@ const ClosuresList: React.FC<ClosuresListProps> = ({ closures, transportationMod
     const activeClosures = closures.filter(isClosureActive);
     const upcomingClosures = closures.filter(c => new Date(c.start_time) > new Date());
     const expiredClosures = closures.filter(c => new Date(c.end_time) < new Date());
+    const displayedClosures = [...closures]
+        .filter(closure =>
+            showExpired || new Date(closure.end_time) >= new Date()
+        )
+        .sort((a, b) => {
+            const relevanceDifference =
+                Number(doesClosureAffectMode(b, transportationMode)) -
+                Number(doesClosureAffectMode(a, transportationMode));
+
+            if (relevanceDifference !== 0) return relevanceDifference;
+
+            const activeDifference =
+                Number(isClosureActive(b)) - Number(isClosureActive(a));
+
+            if (activeDifference !== 0) return activeDifference;
+
+            const startDifference =
+                new Date(b.start_time).getTime() -
+                new Date(a.start_time).getTime();
+
+            return startDifference !== 0
+                ? startDifference
+                : b.id - a.id;
+        });
 
     // Count relevant vs irrelevant closures
     const relevantActiveClosures = activeClosures.filter(c => doesClosureAffectMode(c, transportationMode));
@@ -177,21 +203,27 @@ const ClosuresList: React.FC<ClosuresListProps> = ({ closures, transportationMod
                 </div>
 
                 {/* Closures List */}
+		<label className="mb-3 flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+                    <input
+                        type="checkbox"
+                        checked={showExpired}
+                        onChange={event => setShowExpired(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 accent-red-600"
+                    />
+                    <span>Show expired closures</span>
+                    {expiredClosures.length > 0 && (
+                        <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold">
+                            {expiredClosures.length}
+                        </span>
+                    )}
+                </label>
+
                 <div className="space-y-3">
-                    {closures
-                        .sort((a, b) => {
-                            // Sort by relevance first, then by status, then by start time
-                            const aRelevant = doesClosureAffectMode(a, transportationMode);
-                            const bRelevant = doesClosureAffectMode(b, transportationMode);
-
-                            if (aRelevant && !bRelevant) return -1;
-                            if (!aRelevant && bRelevant) return 1;
-
-                            if (isClosureActive(a) && !isClosureActive(b)) return -1;
-                            if (!isClosureActive(a) && isClosureActive(b)) return 1;
-
-                            return new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
-                        })
+		   {displayedClosures.length === 0 ? (
+                        <p className="py-4 text-center text-sm text-slate-500">
+                            No active or upcoming closures.
+                        </p>
+                    ) : displayedClosures
                         .map((closure) => {
                             const active = isClosureActive(closure);
                             const direction = getDirectionInfo(closure);
