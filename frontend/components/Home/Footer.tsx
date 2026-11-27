@@ -30,51 +30,14 @@ const Footer: React.FC = () => {
             {/* Main Footer Content */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
                 <div className="grid lg:grid-cols-4 gap-8 lg:gap-12">
-                    {/* Brand Section */}
-                    <div className="lg:col-span-1">
-                        <div className="flex items-center space-x-3 mb-6">
-                            <div className="flex items-center justify-center w-10 h-10 bg-blue-600 rounded-lg">
-                                <Construction className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <h3 className="text-lg font-bold text-white">
-                                    OSM Road Closures
-                                </h3>
-                                <p className="text-sm text-gray-400">
-                                    Community Platform
-                                </p>
-                            </div>
-                        </div>
-                        <p className="text-gray-300 mb-6 leading-relaxed">
-                            A temporary road closures database and API for OpenStreetMap,
-                            enabling real-time navigation updates for the community.
-                        </p>
-                        <div className="flex space-x-4">
-                            <a
-                                href="https://github.com/sosm/temporary-road-closures"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-gray-400 hover:text-white transition-colors"
-                            >
-                                <Github className="w-6 h-6" />
-                            </a>
-                            <a
-                                href="/docs"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-gray-400 hover:text-white transition-colors"
-                            >
-                                <Code2 className="w-6 h-6" />
-                            </a>
-                        </div>
-                    </div>
 
                     {/* Quick Links */}
                     <div>
                         <h4 className="text-lg font-semibold text-white mb-6">Quick Links</h4>
-                        <ul className="space-y-3">
+			<ul className="flex flex-col gap-3 md:flex-row md:flex-nowrap md:items-center md:gap-5">
+
                             {quickLinks.map((link, index) => (
-                                <li key={index}>
+                                <li key={index} className="whitespace-nowrap">
                                     {link.external ? (
                                         <a
                                             href={link.href}
@@ -96,21 +59,6 @@ const Footer: React.FC = () => {
                                 </li>
                             ))}
                         </ul>
-                    </div>
-
-                    {/* Technologies */}
-                    <div>
-                        <h4 className="text-lg font-semibold text-white mb-6">Built With</h4>
-                        <div className="flex flex-wrap gap-2">
-                            {technologies.map((tech, index) => (
-                                <span
-                                    key={index}
-                                    className="px-3 py-1 bg-gray-800 text-gray-300 rounded-full text-sm hover:bg-gray-700 transition-colors"
-                                >
-                                    {tech}
-                                </span>
-                            ))}
-                        </div>
                     </div>
                 </div>
             </div>

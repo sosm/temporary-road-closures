@@ -84,22 +84,6 @@ const Hero: React.FC = () => {
                                 View on GitHub
                             </a>
                         </div>
-
-                        {/* Stats */}
-                        <div className="grid grid-cols-3 gap-8 text-center lg:text-left">
-                            <div>
-                                <div className="text-2xl font-bold text-gray-900">OpenLR</div>
-                                <div className="text-sm text-gray-600">Location Standard</div>
-                            </div>
-                            <div>
-                                <div className="text-2xl font-bold text-gray-900">Real-time</div>
-                                <div className="text-sm text-gray-600">Updates</div>
-                            </div>
-                            <div>
-                                <div className="text-2xl font-bold text-gray-900">Open Source</div>
-                                <div className="text-sm text-gray-600">Community</div>
-                            </div>
-                        </div>
                     </div>
 
                     {/* Animation */}
@@ -189,9 +173,6 @@ const Hero: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Floating elements */}
-                        <div className="absolute -top-4 -right-4 w-20 h-20 bg-blue-200 rounded-full opacity-20 animate-pulse"></div>
-                        <div className="absolute -bottom-6 -left-6 w-16 h-16 bg-indigo-200 rounded-full opacity-30 animate-bounce"></div>
                     </div>
                 </div>
             </div>
