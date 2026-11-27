@@ -402,11 +402,6 @@ const MapEventHandler: React.FC<{
 
             const routeArrows = createDirectionArrows(latlngs, false, '#2563eb');
             routeArrows.forEach(arrow => routeLayerGroup.addLayer(arrow));
-
-            if (latlngs.length > 1) {
-                const routeBounds = L.latLngBounds(latlngs);
-                map.fitBounds(routeBounds, { padding: [20, 20] });
-            }
         }
 
         routeLayerGroup.addTo(map);
