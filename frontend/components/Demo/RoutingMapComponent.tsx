@@ -123,13 +123,11 @@ const MapEventHandler: React.FC<{
           onSourceSelect({
             lat: e.latlng.lat,
             lng: e.latlng.lng,
-            address: `${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`
           });
         } else if (!destinationPoint) {
           onDestinationSelect({
             lat: e.latlng.lat,
             lng: e.latlng.lng,
-            address: `${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`
           });
         }
       },
