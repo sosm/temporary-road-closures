@@ -108,7 +108,7 @@ const RoutingForm: React.FC<RoutingFormProps> = ({
     const geocodeAddress = async (address: string): Promise<RoutePoint | null> => {
         try {
             const response = await fetch(
-                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&countrycodes=us`
+                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`
             );
             const data = await response.json();
 
