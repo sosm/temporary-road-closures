@@ -128,14 +128,14 @@ const RoutingForm: React.FC<RoutingFormProps> = ({
 
     const handleFormSubmit = async (data: FormData) => {
         if (data.source && !sourcePoint) {
-            const sourceResult = await geocodeAddress(data.source);
+            const sourceResult = parseCoordinates(data.source) ?? await geocodeAddress(data.source);
             if (sourceResult) {
                 onSourceChange(sourceResult);
             }
         }
 
         if (data.destination && !destinationPoint) {
-            const destResult = await geocodeAddress(data.destination);
+            const destResult = parseCoordinates(data.destination) ?? await geocodeAddress(data.destination);
             if (destResult) {
                 onDestinationChange(destResult);
             }
@@ -175,6 +175,19 @@ const RoutingForm: React.FC<RoutingFormProps> = ({
 
     const selectedMode = transportationModes.find(mode => mode.key === transportationMode);
     const DynamicIcon = selectedMode?.icon || Navigation;
+
+    const parseCoordinates = (input: string): RoutePoint | null => {
+        const match = input.trim().match(
+            /^(-?(?:\d+(?:\.\d+)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d+)?|\.\d+))$/
+        );
+        if (!match) return null;
+
+        const lat = Number(match[1]);
+        const lng = Number(match[2]);
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+
+        return { lat, lng };
+    };
 
     return (
         <div className="p-4 space-y-6">
